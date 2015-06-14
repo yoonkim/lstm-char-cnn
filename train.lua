@@ -30,14 +30,13 @@ cmd:option('-word_vec_size', 300, 'dimensionality of word embeddings')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
-cmd:option('-learning_rate',2e-3,'learning rate')
-cmd:option('-learning_rate_decay',0.97,'learning rate decay')
-cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
-cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
+cmd:option('-learning_rate',1,'starting learning rate')
+cmd:option('-learning_rate_decay',0.5,'learning rate decay')
+cmd:option('-learning_rate_decay_after',4,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-dropout',0,'dropout to use just before classifier. 0 = no dropout')
 cmd:option('-seq_length',20,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',30,'number of full passes through the training data')
+cmd:option('-max_epochs',13,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 -- bookkeeping
@@ -219,9 +218,9 @@ for i = 1, iterations do
     train_losses[i] = train_loss
 
     -- decay learning rate after epoch
-    if i % loader.split_sizes[1] == 0 and opt.learning_rate_decay < 1 then
-        lr = lr * opt.learning_rate_decay
+    if i % loader.split_sizes[1] == 0 and opt.learning_rate_decay < 1 then        
         if epoch >= opt.learning_rate_decay_after then
+	    lr = lr * opt.learning_rate_decay
             local decay_factor = opt.learning_rate_decay
             optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
             print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
