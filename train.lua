@@ -25,7 +25,7 @@ cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
 -- model params
-cmd:option('-rnn_size', 128, 'size of LSTM internal state')
+cmd:option('-rnn_size', 200, 'size of LSTM internal state')
 cmd:option('-word_vec_size', 300, 'dimensionality of word embeddings')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
@@ -39,10 +39,11 @@ cmd:option('-seq_length',20,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',30,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at')
+cmd:option('-max_grad_norm',5,'normalize gradients at')
 -- bookkeeping
-cmd:option('-seed',123,'torch manual random number generator seed')
-cmd:option('-print_every',1,'how many steps/minibatches between printing out the loss')
-cmd:option('-eval_val_every',1000,'every how many iterations should we evaluate on validation data?')
+cmd:option('-seed',3435,'torch manual random number generator seed')
+cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
+cmd:option('-eval_val_every',30000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','lstm','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 -- GPU/CPU
@@ -186,39 +187,50 @@ function feval(x)
     ------------------------ misc ----------------------
     -- transfer final state to initial state (BPTT)
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
+
     -- clip gradient element-wise
-    grad_params:clamp(-opt.grad_clip, opt.grad_clip)
-    return loss, grad_params
+    -- grad_params:clamp(-opt.grad_clip, opt.grad_clip)
+    -- renormalize gradients
+    local grad_norm = grad_params:norm()
+    if grad_norm > opt.max_grad_norm then
+        local shrink_factor = opt.max_grad_norm / grad_norm
+	grad_params:mul(shrink_factor)
+    end    
+    params:add(grad_params:mul(-lr)) 
+    return loss
 end
 
 -- start optimization here
 train_losses = {}
 val_losses = {}
+lr = opt.learning_rate -- starting learning rate which will be decayed
 local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
 local iterations = opt.max_epochs * loader.split_sizes[1]
-local iterations_per_epoch = loader.split_sizes[1]
 local loss0 = nil
 for i = 1, iterations do
     local epoch = i / loader.split_sizes[1]
 
     local timer = torch.Timer()
-    local _, loss = optim.rmsprop(feval, params, optim_state)
+    --local _, loss = optim.rmsprop(feval, params, optim_state)
     local time = timer:time().real
 
-    local train_loss = loss[1] -- the loss is inside a list, pop it
+    --local train_loss = loss[1] -- the loss is inside a list, pop it
+    train_loss = feval(params)
     train_losses[i] = train_loss
 
-    -- exponential learning rate decay
+    -- decay learning rate after epoch
     if i % loader.split_sizes[1] == 0 and opt.learning_rate_decay < 1 then
+        lr = lr * opt.learning_rate_decay
         if epoch >= opt.learning_rate_decay_after then
             local decay_factor = opt.learning_rate_decay
             optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
             print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
         end
     end
+    
 
     -- every now and then or on last iteration
-    if i % opt.eval_val_every == 0 or i == iterations then
+    if i % opt.eval_val_every == 0 or i == iterations or i % loader.split_sizes[1] == 0 then
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
         val_losses[i] = val_loss
@@ -242,13 +254,6 @@ for i = 1, iterations do
     end
    
     if i % 10 == 0 then collectgarbage() end
-
-    -- handle early stopping if things are going really bad
-    if loss0 == nil then loss0 = loss[1] end
-    if loss[1] > loss0 * 3 then
-        print('loss is exploding, aborting.')
-        break -- halt
-    end
 end
 
 

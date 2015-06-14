@@ -34,7 +34,7 @@ function LSTM.lstm(input_size, rnn_size, n, dropout, k)
     if L == 1 then 
       --x = OneHot(input_size)(inputs[1])
       word_vec = LookupTable(input_size, vec_size)(inputs[1])            
-      x = nn.Linear(vec_size, rnn_size)(word_vec)
+      x = nn.Identity()(word_vec)
       input_size_L = vec_size
     else 
       x = outputs[(L-1)*2] 
