@@ -6,10 +6,10 @@ local BatchLoader = {}
 local stringx = require('pl.stringx')
 BatchLoader.__index = BatchLoader
 
-function BatchLoader.create(data_dir, batch_size, seq_length)
+function BatchLoader.create(data_dir, batch_size, seq_length, padding, max_word_l)
     local self = {}
     setmetatable(self, BatchLoader)
-
+    self.padding = padding or 0
     local train_file = path.join(data_dir, 'train.txt')
     local valid_file = path.join(data_dir, 'valid.txt')
     local test_file = path.join(data_dir, 'test.txt')
@@ -28,9 +28,25 @@ function BatchLoader.create(data_dir, batch_size, seq_length)
     local vocab_mapping = torch.load(vocab_file)
     self.idx2word = vocab_mapping[1]; self.word2idx = vocab_mapping[2]
     self.idx2char = vocab_mapping[3]; self.char2idx = vocab_mapping[4]
+    self.idx2char[#self.idx2char + 1] = '{'; self.char2idx['{'] = #self.idx2char -- start-of-word symbol
+    self.idx2char[#self.idx2char + 1] = '}'; self.char2idx['}'] = #self.idx2char -- end-of-word symbol
+    self.idx2char[#self.idx2char + 1] = ' '; self.char2idx[' '] = #self.idx2char -- zero-padding
     self.vocab_size = #self.idx2word
     print(string.format('Word vocab size: %d, Char vocab size: %d', #self.idx2word, #self.idx2char))
 
+    -- create word-char mappings
+    if max_word_l == nil then -- if max word length is not specified
+	self.max_word_l = 0
+	for i = 1, #self.idx2word do
+	    self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) --get max word length 
+	end
+    else
+        self.max_word_l = max_word_l
+    end
+    self.word_char_mapping = torch.zeros(#self.idx2word, self.max_word_l + 2*self.padding):long()
+    for i = 1, #self.idx2word do
+        self.word_char_mapping[i] = self:get_word2char2idx("{"..self.idx2word[i].."}")
+    end
     -- cut off the end for train/valid sets so that it divides evenly
     -- test set is not cut off
     self.batch_size = batch_size
@@ -66,6 +82,19 @@ function BatchLoader.create(data_dir, batch_size, seq_length)
     return self
 end
 
+function BatchLoader:get_word2char2idx(word)
+    local char_idx = torch.zeros(self.max_word_l+ 2*self.padding)
+    char_idx:fill(self.char2idx[' ']) -- fill with padding first
+    local l = self.padding + 1
+    for c in word:gmatch'.' do
+        if self.char2idx[c] ~= nil and l <= char_idx:size(1) then -- cutoff if word is too long
+	    char_idx[l] = self.char2idx[c]
+	    l = l + 1
+	end
+    end
+    return char_idx:long()
+end
+
 function BatchLoader:reset_batch_pointer(split_idx, batch_idx)
     batch_idx = batch_idx or 0
     self.batch_idx[split_idx] = batch_idx
@@ -94,7 +123,9 @@ function BatchLoader.text_to_tensor(input_files, out_vocabfile, out_tensorfile)
         f = torch.DiskFile(input_files[split])
 	rawdata = f:readString('*a') -- read all data at once
 	f:close()
-	rawdata = stringx.replace(rawdata, '\n', '+') -- we use '+' instead of '<eos>'	
+	rawdata = stringx.replace(rawdata, '\n', '+') -- use '+' instead of '<eos>' for end-of-sentence
+	rawdata = stringx.replace(rawdata, '{', ' ') -- '{' is reserved for start-of-word symbol
+	rawdata = stringx.replace(rawdata, '}', ' ') -- '}' is reserved for end-of-word symbol
 	for word in rawdata:gmatch'([^%s]+)' do
 	    if word2idx[word]==nil then
 	        idx2word[#idx2word + 1] = word -- create word-idx/idx-word mappings

@@ -10,12 +10,14 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 require 'lfs'
-
-require 'util.OneHot'
+require 'util.Squeeze'
+require 'util.LookupTableInt'
 require 'util.misc'
+
 local BatchLoader = require 'util.BatchLoader'
 local model_utils = require 'util.model_utils'
 local LSTM = require 'model.LSTM'
+local stringx = require('pl.stringx')
 
 cmd = torch.CmdLine()
 cmd:text()
@@ -27,6 +29,8 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain the file input
 -- model params
 cmd:option('-rnn_size', 200, 'size of LSTM internal state')
 cmd:option('-word_vec_size', 300, 'dimensionality of word embeddings')
+cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
+cmd:option('-kernels', '{2,3,4}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
@@ -37,7 +41,6 @@ cmd:option('-dropout',0,'dropout to use just before classifier. 0 = no dropout')
 cmd:option('-seq_length',20,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',13,'number of full passes through the training data')
-cmd:option('-grad_clip',5,'clip gradients at')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
@@ -64,8 +67,11 @@ end
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length)
 local vocab_size = loader.vocab_size  -- number of unique words
 print('vocab size: ' .. vocab_size)
+
 -- make sure output directory exists
 if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
+
+loadstring("kernels = " .. opt.kernels)() -- get kernel sizes
 
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
@@ -187,8 +193,6 @@ function feval(x)
     -- transfer final state to initial state (BPTT)
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
 
-    -- clip gradient element-wise
-    -- grad_params:clamp(-opt.grad_clip, opt.grad_clip)
     -- renormalize gradients
     local grad_norm = grad_params:norm()
     if grad_norm > opt.max_grad_norm then
@@ -203,30 +207,20 @@ end
 train_losses = {}
 val_losses = {}
 lr = opt.learning_rate -- starting learning rate which will be decayed
-local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
 local iterations = opt.max_epochs * loader.split_sizes[1]
-local loss0 = nil
 for i = 1, iterations do
     local epoch = i / loader.split_sizes[1]
 
     local timer = torch.Timer()
-    --local _, loss = optim.rmsprop(feval, params, optim_state)
     local time = timer:time().real
 
-    --local train_loss = loss[1] -- the loss is inside a list, pop it
     train_loss = feval(params)
     train_losses[i] = train_loss
 
     -- decay learning rate after epoch
-    if i % loader.split_sizes[1] == 0 and opt.learning_rate_decay < 1 then        
-        if epoch >= opt.learning_rate_decay_after then
-	    lr = lr * opt.learning_rate_decay
-            local decay_factor = opt.learning_rate_decay
-            optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
-            print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
-        end
-    end
-    
+    if i % loader.split_sizes[1] == 0 and epoch >= opt.learning_rate_decay_after then        
+        lr = lr * opt.learning_rate_decay        
+    end    
 
     -- every now and then or on last iteration
     if i % opt.eval_val_every == 0 or i == iterations or i % loader.split_sizes[1] == 0 then
