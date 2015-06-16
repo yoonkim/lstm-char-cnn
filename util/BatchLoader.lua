@@ -38,14 +38,14 @@ function BatchLoader.create(data_dir, batch_size, seq_length, padding, max_word_
     if max_word_l == nil then -- if max word length is not specified
 	self.max_word_l = 0
 	for i = 1, #self.idx2word do
-	    self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) --get max word length 
+	    self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) -- get max word length 
 	end
     else
         self.max_word_l = max_word_l
     end
-    self.word_char_mapping = torch.zeros(#self.idx2word, self.max_word_l + 2*self.padding):long()
+    self.word2char2idx = torch.zeros(#self.idx2word, self.max_word_l + 2*self.padding):long()
     for i = 1, #self.idx2word do
-        self.word_char_mapping[i] = self:get_word2char2idx("{"..self.idx2word[i].."}")
+        self.word2char2idx[i] = self:get_word2char2idx("{"..self.idx2word[i].."}")
     end
     -- cut off the end for train/valid sets so that it divides evenly
     -- test set is not cut off
@@ -53,6 +53,7 @@ function BatchLoader.create(data_dir, batch_size, seq_length, padding, max_word_
     self.seq_length = seq_length
     self.split_sizes = {}
     self.all_batches = {}
+    local lookup = nn.LookupTableInt(self.word2char2idx)
     print('reshaping tensors...')  
     local x_batches, y_batches, nbatches
     for split, data in ipairs(all_data) do
@@ -73,8 +74,12 @@ function BatchLoader.create(data_dir, batch_size, seq_length, padding, max_word_
 	    x_batches = {data:resize(1, data:size(1)):expand(batch_size, data:size(2))}
 	    y_batches = {ydata:resize(1, ydata:size(1)):expand(batch_size, ydata:size(2))}
 	    self.split_sizes[split] = 1	
-	end	
-  	self.all_batches[split] = {x_batches, y_batches}
+	end
+	local x_char_batches = {}
+	for i = 1, #x_batches do
+	    x_char_batches[#x_char_batches + 1] = lookup:forward(x_batches[i]):clone()
+	end
+  	self.all_batches[split] = {x_batches, y_batches, x_char_batches}
     end
     self.batch_idx = {0,0,0}
     print(string.format('data load done. Number of batches in train: %d, val: %d, test: %d', self.split_sizes[1], self.split_sizes[2], self.split_sizes[3]))
@@ -108,7 +113,7 @@ function BatchLoader:next_batch(split_idx)
     end
     -- pull out the correct next batch
     local idx = self.batch_idx[split_idx]
-    return self.all_batches[split_idx][1][idx], self.all_batches[split_idx][2][idx]
+    return self.all_batches[split_idx][1][idx], self.all_batches[split_idx][2][idx], self.all_batches[split_idx][3][idx]
 end
 
 function BatchLoader.text_to_tensor(input_files, out_vocabfile, out_tensorfile)
@@ -126,6 +131,7 @@ function BatchLoader.text_to_tensor(input_files, out_vocabfile, out_tensorfile)
 	rawdata = stringx.replace(rawdata, '\n', '+') -- use '+' instead of '<eos>' for end-of-sentence
 	rawdata = stringx.replace(rawdata, '{', ' ') -- '{' is reserved for start-of-word symbol
 	rawdata = stringx.replace(rawdata, '}', ' ') -- '}' is reserved for end-of-word symbol
+	rawdata = stringx.replace(rawdata, '<unk>', '|') -- '<unk>' gets replaced with a single character
 	for word in rawdata:gmatch'([^%s]+)' do
 	    if word2idx[word]==nil then
 	        idx2word[#idx2word + 1] = word -- create word-idx/idx-word mappings

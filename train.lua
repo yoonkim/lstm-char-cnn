@@ -1,8 +1,9 @@
 --[[
-Trains a word+character-level multi-layer language model
+Trains a word+character-level multi-layer rnn language model
 
-Code is based on implementation in 
+Much of the code is borrowed from the following implementations
 https://github.com/karpathy/char-rnn
+https://github.com/wojzaremba/lstm
 ]]--
 
 require 'torch'
@@ -17,6 +18,9 @@ require 'util.misc'
 local BatchLoader = require 'util.BatchLoader'
 local model_utils = require 'util.model_utils'
 local LSTM = require 'model.LSTM'
+local TDNN = require 'model.TDNN'
+local LSTMTDNN = require 'model.LSTMTDNN'
+
 local stringx = require('pl.stringx')
 
 cmd = torch.CmdLine()
@@ -30,7 +34,8 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain the file input
 cmd:option('-rnn_size', 200, 'size of LSTM internal state')
 cmd:option('-word_vec_size', 300, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
-cmd:option('-kernels', '{2,3,4}', 'conv net kernel widths')
+cmd:option('-num_feature_maps', 100, 'number of feature maps in the CNN')
+cmd:option('-kernels', '{2,3}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
@@ -65,8 +70,7 @@ end
 
 -- create the data loader class
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length)
-local vocab_size = loader.vocab_size  -- number of unique words
-print('vocab size: ' .. vocab_size)
+print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char)
 
 -- make sure output directory exists
 if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
@@ -75,8 +79,10 @@ loadstring("kernels = " .. opt.kernels)() -- get kernel sizes
 
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
-print('creating an LSTM with ' .. opt.num_layers .. ' layers')
-protos.rnn = LSTM.lstm(vocab_size, opt.rnn_size, opt.num_layers, opt.dropout)
+print('creating an LSTM-TDNN with ' .. opt.num_layers .. ' layers')
+--protos.rnn = LSTM.lstm(#loader.idx2word, opt.rnn_size, opt.num_layers, opt.dropout)
+protos.rnn = LSTMTDNN.lstmtdnn(#loader.idx2word, opt.rnn_size, opt.num_layers, opt.dropout, opt.word_vec_size,
+	         opt.char_vec_size, #loader.idx2char, opt.num_feature_maps, kernels, loader.word2char2idx)
 -- the initial state of the cell/hidden states
 init_state = {}
 for L=1,opt.num_layers do
@@ -97,9 +103,23 @@ end
 params, grad_params = model_utils.combine_all_parameters(protos.rnn)
 
 -- initialization
-params:uniform(-0.08, 0.08) -- small numbers uniform (TODO: set forget bias to 1)
+params:uniform(-0.08, 0.08) -- small numbers uniform
 
 print('number of parameters in the model: ' .. params:nElement())
+
+-- get certain layers which will may be manipulated separately during SGD
+function get_layer(layer)
+    local tn = torch.typename(layer)
+    if tn == 'nn.LookupTable' then
+        if layer.weight:size(1) == #loader.idx2word then
+	    word_vecs = layer
+	elseif layer.weight:size(1) == #loader.idx2char then
+	    char_vecs = layer
+	end
+    end
+end 
+protos.rnn:apply(get_layer)
+
 -- make a bunch of clones after flattening, as that reallocates memory
 clones = {}
 for name,proto in pairs(protos) do
@@ -199,7 +219,7 @@ function feval(x)
         local shrink_factor = opt.max_grad_norm / grad_norm
 	grad_params:mul(shrink_factor)
     end    
-    params:add(grad_params:mul(-lr)) 
+    params:add(grad_params:mul(-lr)) -- update params
     return loss
 end
 
@@ -214,7 +234,8 @@ for i = 1, iterations do
     local timer = torch.Timer()
     local time = timer:time().real
 
-    train_loss = feval(params)
+    train_loss = feval(params) -- fwd/backprop and update params
+    char_vecs.weight[#loader.idx2char]:zero() -- zero-padding vector is always zero
     train_losses[i] = train_loss
 
     -- decay learning rate after epoch
