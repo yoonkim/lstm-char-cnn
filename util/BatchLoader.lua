@@ -113,7 +113,7 @@ function BatchLoader:next_batch(split_idx)
     end
     -- pull out the correct next batch
     local idx = self.batch_idx[split_idx]
-    return self.all_batches[split_idx][1][idx], self.all_batches[split_idx][2][idx], self.all_batches[split_idx][3][idx]
+    return self.all_batches[split_idx][3][idx], self.all_batches[split_idx][2][idx], self.all_batches[split_idx][3][idx]
 end
 
 function BatchLoader.text_to_tensor(input_files, out_vocabfile, out_tensorfile)
