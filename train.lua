@@ -11,6 +11,7 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 require 'lfs'
+require 'util.OneHot'
 require 'util.Squeeze'
 require 'util.LookupTableInt'
 require 'util.misc'
@@ -32,10 +33,10 @@ cmd:text('Options')
 cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
 -- model params
 cmd:option('-rnn_size', 200, 'size of LSTM internal state')
-cmd:option('-word_vec_size', 300, 'dimensionality of word embeddings')
+cmd:option('-word_vec_size', 500, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
 cmd:option('-num_feature_maps', 100, 'number of feature maps in the CNN')
-cmd:option('-kernels', '{2,3}', 'conv net kernel widths')
+cmd:option('-kernels', '{1,2,3,4,5}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
@@ -68,14 +69,16 @@ if opt.gpuid >= 0 then
     cutorch.setDevice(opt.gpuid + 1)
 end
 
+loadstring("kernels = " .. opt.kernels)() -- get kernel sizes
+local padding = torch.Tensor(kernels):max()-1 -- padding is max kernel size minus one
+
 -- create the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length)
+loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, padding)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char)
 
 -- make sure output directory exists
 if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
 
-loadstring("kernels = " .. opt.kernels)() -- get kernel sizes
 
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
