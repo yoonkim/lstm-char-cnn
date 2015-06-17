@@ -22,7 +22,7 @@ function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size,
     local length = word2char2idx:size(2)
     local word_vec_size = word_vec_size or rnn_size
     local inputs = {}
-    table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices) 
+    --table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices) 
     table.insert(inputs, nn.Identity()()) -- batch_size x word length (char indices)
     for L = 1,n do
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
@@ -33,11 +33,11 @@ function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size,
     local outputs = {}
     for L = 1,n do
 	-- c,h from previous timesteps
-	local prev_h = inputs[L*2+2]
-	local prev_c = inputs[L*2+1]
+	local prev_h = inputs[L*2+2-1]
+	local prev_c = inputs[L*2+1-1]
 	-- the input to this layer
 	if L == 1 then 
-	    char_vec = nn.LookupTable(char_vocab_size, char_vec_size)(inputs[2]) --batch_size * word length * char_vec_size
+	    char_vec = nn.LookupTable(char_vocab_size, char_vec_size)(inputs[1]) --batch_size * word length * char_vec_size	    
 	    local layer1 = {}
 	    for i = 1, #kernels do
 		local reduced_l = length - kernels[i] + 1 
@@ -48,9 +48,9 @@ function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size,
 	    local layer1_concat = nn.JoinTable(3)(layer1)
 	    tdnn_output = nn.Squeeze()(layer1_concat)
 	    --tdnn_output = TDNN.tdnn(length, char_vec_size, tdnn_output_size, kernels) -- batch_size * tdnn_output_size  
-	    word_vec = LookupTable(word_vocab_size, word_vec_size)(inputs[1])            
+	    --word_vec = LookupTable(word_vocab_size, word_vec_size)(inputs[1])            
 	    --x = nn.Identity()(word_vec)
-	    x = nn.CAddTable()({nn.Identity()(tdnn_output), word_vec})
+	    x = nn.ReLU()(nn.Linear(word_vec_size, word_vec_size)(tdnn_output))
 	    input_size_L = word_vec_size
 	else 
 	    x = outputs[(L-1)*2] 
