@@ -19,8 +19,7 @@ require 'util.misc'
 local BatchLoader = require 'util.BatchLoader'
 local model_utils = require 'util.model_utils'
 local LSTM = require 'model.LSTM'
-local TDNN = require 'model.TDNN'
-local LSTMTDNN = require 'model.LSTMTDNN'
+local LSTMCNN = require 'model.LSTMCNN'
 
 local stringx = require('pl.stringx')
 
@@ -33,9 +32,9 @@ cmd:text('Options')
 cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
 -- model params
 cmd:option('-rnn_size', 200, 'size of LSTM internal state')
-cmd:option('-word_vec_size', 500, 'dimensionality of word embeddings')
-cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
-cmd:option('-num_feature_maps', 100, 'number of feature maps in the CNN')
+cmd:option('-word_vec_size', 200, 'dimensionality of word embeddings')
+cmd:option('-char_vec_size', 30, 'dimensionality of character embeddings')
+cmd:option('-feature_maps', '{25,50,75,100,125}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
@@ -71,6 +70,7 @@ end
 
 loadstring("kernels = " .. opt.kernels)() -- get kernel sizes
 local padding = torch.Tensor(kernels):max()-1 -- padding is max kernel size minus one
+loadstring("feature_maps = " .. opt.feature_maps)() -- get feature map sizes
 
 -- create the data loader class
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, padding)
@@ -82,10 +82,10 @@ if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
 
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
-print('creating an LSTM-TDNN with ' .. opt.num_layers .. ' layers')
+print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
 --protos.rnn = LSTM.lstm(#loader.idx2word, opt.rnn_size, opt.num_layers, opt.dropout)
-protos.rnn = LSTMTDNN.lstmtdnn(#loader.idx2word, opt.rnn_size, opt.num_layers, opt.dropout, opt.word_vec_size,
-	         opt.char_vec_size, #loader.idx2char, opt.num_feature_maps, kernels, loader.word2char2idx)
+protos.rnn = LSTMCNN.lstmcnn(#loader.idx2word, opt.rnn_size, opt.num_layers, opt.dropout, opt.word_vec_size,
+	         opt.char_vec_size, #loader.idx2char, feature_maps, kernels, loader.word2char2idx)
 -- the initial state of the cell/hidden states
 init_state = {}
 for L=1,opt.num_layers do
@@ -106,7 +106,7 @@ end
 params, grad_params = model_utils.combine_all_parameters(protos.rnn)
 
 -- initialization
-params:uniform(-0.08, 0.08) -- small numbers uniform
+params:uniform(-0.05, 0.05) -- small numbers uniform
 
 print('number of parameters in the model: ' .. params:nElement())
 
@@ -142,11 +142,12 @@ function eval_split(split_idx, max_batches)
     if split_idx < 3 then --evaluation is different btw test vs train/val
 	for i = 1,n do -- iterate over batches in the split
 	    -- fetch a batch
-	    local x, y = loader:next_batch(split_idx)
+	    local x, y, x_char = loader:next_batch(split_idx)
 	    if opt.gpuid >= 0 then -- ship the input arrays to GPU
 		-- have to convert to float because integers can't be cuda()'d
 		x = x:float():cuda()
 		y = y:float():cuda()
+		x_char = x:float():cuda()
 	    end
 	    -- forward pass
 	    for t=1,opt.seq_length do
@@ -176,11 +177,12 @@ function feval(x)
     grad_params:zero()
 
     ------------------ get minibatch -------------------
-    local x, y = loader:next_batch(1) --from train
+    local x, y, x_char = loader:next_batch(1) --from train
     if opt.gpuid >= 0 then -- ship the input arrays to GPU
         -- have to convert to float because integers can't be cuda()'d
         x = x:float():cuda()
         y = y:float():cuda()
+	x_char = x_char:float():cuda()
     end
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
