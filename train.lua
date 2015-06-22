@@ -15,6 +15,7 @@ require 'util.OneHot'
 require 'util.Squeeze'
 require 'util.LookupTableInt'
 require 'util.misc'
+require 'util.OuterProduct'
 
 local BatchLoader = require 'util.BatchLoader'
 local model_utils = require 'util.model_utils'
@@ -31,21 +32,21 @@ cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
 -- model params
-cmd:option('-rnn_size', 650, 'size of LSTM internal state')
-cmd:option('-word_vec_size', 500, 'dimensionality of word embeddings')
+cmd:option('-rnn_size', 200, 'size of LSTM internal state')
+cmd:option('-word_vec_size', 30, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 30, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{50,50,50}', 'number of feature maps in the CNN')
+cmd:option('-feature_maps', '{5,5,5}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{2,3,4}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
-cmd:option('-learning_rate_decay',0.8,'learning rate decay')
-cmd:option('-learning_rate_decay_after',6,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-learning_rate_decay',0.5,'learning rate decay')
+cmd:option('-learning_rate_decay_after',4,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-dropout',0,'dropout to use just before classifier. 0 = no dropout')
 cmd:option('-seq_length',20,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',39,'number of full passes through the training data')
+cmd:option('-max_epochs',14,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
