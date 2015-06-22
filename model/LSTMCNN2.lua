@@ -18,6 +18,7 @@ function LSTMCNN.lstmcnn(word_vocab_size, rnn_size, n, dropout, word_vec_size, c
     -- there will be 2*n+1 inputs
     local length = word2char2idx:size(2)
     local inputs = {}
+    table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices)
     table.insert(inputs, nn.Identity()()) -- batch_size x word length (char indices)
     for L = 1,n do
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
@@ -28,12 +29,12 @@ function LSTMCNN.lstmcnn(word_vocab_size, rnn_size, n, dropout, word_vec_size, c
     local outputs = {}
     for L = 1,n do
 	-- c,h from previous timesteps
-	local prev_h = inputs[L*2+1]
-	local prev_c = inputs[L*2]
+	local prev_h = inputs[L*2+2]
+	local prev_c = inputs[L*2+1]
 	-- the input to this layer
 	if L == 1 then 
-	    --word_vec = nn.LookupTable(word_vocab_size, word_vec_size)(inputs[1])
-	    char_vec = nn.LookupTable(char_vocab_size, char_vec_size)(inputs[1]) --batch_size * word length * char_vec_size
+	    word_vec = nn.LookupTable(word_vocab_size, word_vec_size)(inputs[1])
+	    char_vec = nn.LookupTable(char_vocab_size, char_vec_size)(inputs[2]) --batch_size * word length * char_vec_size
 	    local layer1 = {}
 	    for i = 1, #kernels do
 		local reduced_l = length - kernels[i] + 1 
@@ -47,8 +48,8 @@ function LSTMCNN.lstmcnn(word_vocab_size, rnn_size, n, dropout, word_vec_size, c
 	    else
 	        cnn_output = nn.Squeeze()(pool_layer)
 	    end
-	    x = nn.Identity()(cnn_output)
-	    input_size_L = torch.Tensor(feature_maps):sum()	    
+	    x = nn.JoinTable(2)({cnn_output, word_vec})
+	    input_size_L = torch.Tensor(feature_maps):sum() + word_vec_size
 	else 
 	    x = outputs[(L-1)*2] 
 	    if dropout > 0 then x = nn.Dropout(dropout)(x) end -- apply dropout, if any
