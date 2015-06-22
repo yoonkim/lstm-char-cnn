@@ -1,6 +1,4 @@
-
-local LSTMTDNN = {}
-
+local LSTMCNN = {}
 
 local ok, cunn = pcall(require, 'fbcunn')
 if not ok then
@@ -9,9 +7,8 @@ else
     LookupTable = fbcunn.LookupTableGPU
 end
 
-function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size, char_vec_size, char_vocab_size,
-	 		num_feature_maps, kernels, word2char2idx)
-    -- input_size = vocab size
+function LSTMCNN.lstmcnn(word_vocab_size, rnn_size, n, dropout, word_vec_size, char_vec_size, char_vocab_size,
+	 		feature_maps, kernels, word2char2idx)
     -- rnn_size = dimensionality of hidden layers
     -- n = number of layers
     -- k = word embedding size
@@ -20,38 +17,39 @@ function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size,
 
     -- there will be 2*n+1 inputs
     local length = word2char2idx:size(2)
-    local word_vec_size = word_vec_size or rnn_size
     local inputs = {}
-    --table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices) 
+    table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices)
     table.insert(inputs, nn.Identity()()) -- batch_size x word length (char indices)
     for L = 1,n do
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
       table.insert(inputs, nn.Identity()()) -- prev_h[L]
     end
 
-    local x, input_size_L, word_vec, char_vec, tdnn_output
+    local x, input_size_L, word_vec, char_vec, cnn_output, pool_layer
     local outputs = {}
     for L = 1,n do
 	-- c,h from previous timesteps
-	local prev_h = inputs[L*2+2-1]
-	local prev_c = inputs[L*2+1-1]
+	local prev_h = inputs[L*2+2]
+	local prev_c = inputs[L*2+1]
 	-- the input to this layer
 	if L == 1 then 
-	    char_vec = nn.LookupTable(char_vocab_size, char_vec_size)(inputs[1]) --batch_size * word length * char_vec_size	    
+	    word_vec = nn.LookupTable(word_vocab_size, word_vec_size)(inputs[1])
+	    char_vec = nn.LookupTable(char_vocab_size, char_vec_size)(inputs[2]) --batch_size * word length * char_vec_size
 	    local layer1 = {}
 	    for i = 1, #kernels do
 		local reduced_l = length - kernels[i] + 1 
-		local conv_layer = nn.TemporalConvolution(char_vec_size, num_feature_maps, kernels[i])(char_vec)
-		local pool_layer = nn.TemporalMaxPooling(reduced_l)(nn.Tanh()(conv_layer))
+		local conv_layer = nn.TemporalConvolution(char_vec_size, feature_maps[i], kernels[i])(char_vec)
+		pool_layer = nn.TemporalMaxPooling(reduced_l)(nn.Tanh()(conv_layer))
 		table.insert(layer1, pool_layer)
 	    end
-	    local layer1_concat = nn.JoinTable(3)(layer1)
-	    tdnn_output = nn.Squeeze()(layer1_concat)
-	    --tdnn_output = TDNN.tdnn(length, char_vec_size, tdnn_output_size, kernels) -- batch_size * tdnn_output_size  
-	    --word_vec = LookupTable(word_vocab_size, word_vec_size)(inputs[1])            
-	    --x = nn.Identity()(word_vec)
-	    x = nn.Identity()(tdnn_output)
-	    input_size_L = word_vec_size
+	    if #kernels > 1 then
+	        local layer1_concat = nn.JoinTable(3)(layer1)
+		cnn_output = nn.Squeeze()(layer1_concat)
+	    else
+	        cnn_output = nn.Squeeze()(pool_layer)
+	    end
+	    x = nn.CAddTable()({cnn_output, word_vec})
+	    input_size_L = torch.Tensor(feature_maps):sum()
 	else 
 	    x = outputs[(L-1)*2] 
 	    if dropout > 0 then x = nn.Dropout(dropout)(x) end -- apply dropout, if any
@@ -65,8 +63,8 @@ function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size,
 	local sigmoid_chunk = nn.Narrow(2, 1, 3 * rnn_size)(all_input_sums)
 	sigmoid_chunk = nn.Sigmoid()(sigmoid_chunk)
 	local in_gate = nn.Narrow(2, 1, rnn_size)(sigmoid_chunk)
-	local forget_gate = nn.Narrow(2, rnn_size + 1, rnn_size)(sigmoid_chunk)
-	local out_gate = nn.Narrow(2, 2 * rnn_size + 1, rnn_size)(sigmoid_chunk)
+	local out_gate = nn.Narrow(2, rnn_size + 1, rnn_size)(sigmoid_chunk)
+	local forget_gate = nn.Narrow(2, 2 * rnn_size + 1, rnn_size)(sigmoid_chunk)
 	-- decode the write inputs
 	local in_transform = nn.Narrow(2, 3 * rnn_size + 1, rnn_size)(all_input_sums)
 	in_transform = nn.Tanh()(in_transform)
@@ -92,5 +90,5 @@ function LSTMTDNN.lstmtdnn(word_vocab_size, rnn_size, n, dropout, word_vec_size,
     return nn.gModule(inputs, outputs)
 end
 
-return LSTMTDNN
+return LSTMCNN
 

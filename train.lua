@@ -19,7 +19,7 @@ require 'util.misc'
 local BatchLoader = require 'util.BatchLoader'
 local model_utils = require 'util.model_utils'
 local LSTM = require 'model.LSTM'
-local LSTMCNN = require 'model.LSTMCNN'
+local LSTMCNN = require 'model.LSTMCNN2'
 
 local stringx = require('pl.stringx')
 
@@ -32,10 +32,10 @@ cmd:text('Options')
 cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
 -- model params
 cmd:option('-rnn_size', 200, 'size of LSTM internal state')
-cmd:option('-word_vec_size', 200, 'dimensionality of word embeddings')
+cmd:option('-word_vec_size', 150, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 30, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{25,50,75,100,125}', 'number of feature maps in the CNN')
-cmd:option('-kernels', '{1,2,3,4,5}', 'conv net kernel widths')
+cmd:option('-feature_maps', '{50,50,50}', 'number of feature maps in the CNN')
+cmd:option('-kernels', '{2,3,4}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
@@ -147,12 +147,12 @@ function eval_split(split_idx, max_batches)
 		-- have to convert to float because integers can't be cuda()'d
 		x = x:float():cuda()
 		y = y:float():cuda()
-		x_char = x:float():cuda()
+		x_char = x_char:float():cuda()
 	    end
 	    -- forward pass
 	    for t=1,opt.seq_length do
 		clones.rnn[t]:evaluate() -- for dropout proper functioning
-		local lst = clones.rnn[t]:forward{x[{{}, t}], unpack(rnn_state[t-1])}
+		local lst = clones.rnn[t]:forward{x[{{}, t}], x_char[{{},t}], unpack(rnn_state[t-1])}
 		rnn_state[t] = {}
 		for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end
 		prediction = lst[#lst] 
@@ -190,7 +190,7 @@ function feval(x)
     local loss = 0
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
-        local lst = clones.rnn[t]:forward{x[{{}, t}], unpack(rnn_state[t-1])}
+        local lst = clones.rnn[t]:forward{x[{{}, t}], x_char[{{},t}], unpack(rnn_state[t-1])}
         rnn_state[t] = {}
         for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
         predictions[t] = lst[#lst] -- last element is the prediction
@@ -204,13 +204,13 @@ function feval(x)
         -- backprop through loss, and softmax/linear
         local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
         table.insert(drnn_state[t], doutput_t)
-        local dlst = clones.rnn[t]:backward({x[{{}, t}], unpack(rnn_state[t-1])}, drnn_state[t])
+        local dlst = clones.rnn[t]:backward({x[{{}, t}], x_char[{{},t}], unpack(rnn_state[t-1])}, drnn_state[t])
         drnn_state[t-1] = {}
         for k,v in pairs(dlst) do
-            if k > 1 then -- k == 1 is gradient on x, which we dont need
+            if k > 2 then -- k == 1 is gradient on x, which we dont need
                 -- note we do k-1 because first item is dembeddings, and then follow the 
                 -- derivatives of the state, starting at index 2. I know...
-                drnn_state[t-1][k-1] = v
+                drnn_state[t-1][k-2] = v
             end
         end
     end
