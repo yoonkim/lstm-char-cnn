@@ -48,8 +48,9 @@ function LSTMCNN.lstmcnn(word_vocab_size, rnn_size, n, dropout, word_vec_size, c
 	    else
 	        cnn_output = nn.Squeeze()(pool_layer)
 	    end
-	    x = nn.JoinTable(2)({cnn_output, word_vec})
-	    input_size_L = torch.Tensor(feature_maps):sum() + word_vec_size
+	    --x = nn.JoinTable(2)({cnn_output, word_vec})	    
+	    input_size_L = torch.Tensor(feature_maps):sum()*word_vec_size
+	    x = nn.View(20,input_size_L)(nn.OuterProduct(){cnn_output, word_vec})
 	else 
 	    x = outputs[(L-1)*2] 
 	    if dropout > 0 then x = nn.Dropout(dropout)(x) end -- apply dropout, if any
