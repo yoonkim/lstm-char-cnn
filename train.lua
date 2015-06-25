@@ -32,26 +32,26 @@ cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
 -- model params
-cmd:option('-rnn_size', 200, 'size of LSTM internal state')
-cmd:option('-word_vec_size', 30, 'dimensionality of word embeddings')
-cmd:option('-char_vec_size', 30, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{5,5,5}', 'number of feature maps in the CNN')
-cmd:option('-kernels', '{2,3,4}', 'conv net kernel widths')
+cmd:option('-rnn_size', 650, 'size of LSTM internal state')
+cmd:option('-word_vec_size', 400, 'dimensionality of word embeddings')
+cmd:option('-char_vec_size', 20, 'dimensionality of character embeddings')
+cmd:option('-feature_maps', '{50,50,50,50,50}', 'number of feature maps in the CNN')
+cmd:option('-kernels', '{2,3,4,5,6}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'for now only lstm is supported. keep fixed')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
-cmd:option('-learning_rate_decay',0.5,'learning rate decay')
-cmd:option('-learning_rate_decay_after',4,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-learning_rate_decay',0.8,'learning rate decay')
+cmd:option('-learning_rate_decay_after',6,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-dropout',0,'dropout to use just before classifier. 0 = no dropout')
-cmd:option('-seq_length',20,'number of timesteps to unroll for')
+cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',14,'number of full passes through the training data')
+cmd:option('-max_epochs',39,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
-cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
-cmd:option('-eval_val_every',30000,'every how many iterations should we evaluate on validation data?')
+cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
+cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','lstm','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 -- GPU/CPU
@@ -132,15 +132,18 @@ for name,proto in pairs(protos) do
 end
 
 -- evaluate the loss over an entire split
-function eval_split(split_idx, max_batches)
+function eval_split(split_idx, max_batches, full_eval)
     print('evaluating loss over split index ' .. split_idx)
     local n = loader.split_sizes[split_idx]
     if max_batches ~= nil then n = math.min(max_batches, n) end
 
     loader:reset_batch_pointer(split_idx) -- move batch iteration pointer for this split to front
     local loss = 0
-    local rnn_state = {[0] = init_state}
-    if split_idx < 3 then --evaluation is different btw test vs train/val
+    local total_unk_perp = 0
+    local unk_perp = 0
+    local unk_count = 0
+    local rnn_state = {[0] = init_state}    
+    if full_eval==nil then -- batch eval        
 	for i = 1,n do -- iterate over batches in the split
 	    -- fetch a batch
 	    local x, y, x_char = loader:next_batch(split_idx)
@@ -163,10 +166,28 @@ function eval_split(split_idx, max_batches)
 	    rnn_state[0] = rnn_state[#rnn_state]
 	    print(i .. '/' .. n .. '...')
 	end
-    end
-    loss = loss / opt.seq_length / n
-    local perp = torch.exp(loss)
-    return perp
+	loss = loss / opt.seq_length / n
+    else -- full eval on test set
+        local x, y, x_char = loader:next_batch(split_idx)
+	protos.rnn:evaluate() -- just need one clone
+	for t = 1, x:size(2) do
+	    local lst = protos.rnn:forward{x[{{},t}], x_char[{{},t}], unpack(rnn_state[0])}
+	    rnn_state[0] = {}
+	    for i=1,#init_state do table.insert(rnn_state[0], lst[i]) end
+	    prediction = lst[#lst] 
+	    local tok_perp = protos.criterion:forward(prediction, y[{{},t}])
+	    loss = loss + tok_perp
+	    if x[1][t] == loader.word2idx['|'] then -- count perplexity for <unk> contexts
+	        unk_perp = unk_perp + tok_perp
+		unk_count = unk_count + 1
+	    end
+	    print(t .. '/' .. unk_perp .. '/' .. unk_count .. '/' .. loss)
+	end
+	total_unk_perp = torch.exp(unk_perp / unk_count)
+	loss = loss / x:size(2)
+    end    
+    local perp = torch.exp(loss)    
+    return perp, total_unk_perp
 end
 
 -- do fwd/bwd and return loss, grad_params
