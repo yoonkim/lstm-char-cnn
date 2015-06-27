@@ -6,9 +6,9 @@ function TensorProd:__init(vec1_size, vec2_size, output_size)
     self.gradBias = torch.Tensor(output_size)
     self.weight = torch.Tensor(output_size, vec1_size, vec2_size)
     self.gradWeight = torch.Tensor(output_size, vec1_size, vec2_size)
-    self.tmp = torch.Tensor()
+    --self.tmp = torch.Tensor()
     self.gradInput = {torch.Tensor(), torch.Tensor()}
-    self.ab = torch.Tensor(vec1_size, vec2_size) -- outer prods 
+    --self.ab = torch.Tensor(vec1_size, vec2_size) -- outer prods 
     self:reset()
 end
 
@@ -23,19 +23,20 @@ function TensorProd:updateOutput(input)
     assert(a:dim()==b:dim(), 'input tensors should have same number of dims (1 or 2)')
     if a:dim()==1 then
         self.output:resize(self.weight:size(1))
-	self.tmp:resize(self.weight:size(1), self.weight:size(2))
+	--self.tmp:resize(self.weight:size(1), self.weight:size(2))
 	for i = 1, self.weight:size(1) do
-	    self.tmp[i]:mv(self.weight[i], b)
-	    self.output[i] = self.tmp[i]:dot(a)
+	    --self.tmp[i]:mv(self.weight[i], b)	    
+	    --self.output[i] = self.tmp[i]:dot(a)
+	    self.output[i] = a:dot(torch.mv(self.weight[i],b))
 	end
 	self.output = self.output + self.bias
     elseif a:dim()==2 then -- mini-batch processing
         local batch_size = a:size(1)
 	self.output:resize(batch_size, self.weight:size(1))
-	self.tmp:resize(self.weight:size(1), batch_size, self.weight:size(2))
+	--self.tmp:resize(self.weight:size(1), batch_size, self.weight:size(2))
 	for i = 1, self.weight:size(1) do
-	    self.tmp[i]:mm(b, self.weight[i]:t())	    
-	    self.output[{{},i}] = torch.sum(torch.cmul(self.tmp[i], a),2) + self.bias[i]
+	    --self.tmp[i]:mm(b, self.weight[i]:t())	    
+	    self.output[{{},i}] = torch.sum(torch.cmul(torch.mm(b, self.weight[i]:t()), a),2) + self.bias[i]
 	end
     else
         error("input must be 1D or 2D tensors")
@@ -68,17 +69,17 @@ end
 function TensorProd:accGradParameters(input, gradOutput)
     local a, b = table.unpack(input)
     if a:dim()==1 then
-        self.ab:ger(a,b)
+        local ab = torch.ger(a,b)
 	self.gradBias:add(gradOutput)
 	for i = 1, self.weight:size(1) do
-	    self.gradWeight[i]:add(self.ab*gradOutput[i])
+	    self.gradWeight[i]:add(ab*gradOutput[i])
 	end    
     else -- mini-batch processing
         self.gradBias:add(gradOutput:sum(1))
 	for i = 1, a:size(1) do
-	    self.ab:ger(a[i],b[i])
+	    local ab = torch.ger(a[i],b[i])
 	    for j = 1, self.weight:size(1) do
-	        self.gradWeight[j]:add(self.ab*gradOutput[i][j])
+	        self.gradWeight[j]:add(ab*gradOutput[i][j])
 	    end
 	end
     end
