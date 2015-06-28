@@ -45,15 +45,9 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     end
     local outputs = {}
     for L = 1,n do
-    	local prev_h, prev_c
-	-- c,h from previous timesteps. offsets depend on if we are using both word/chars
-	if use_words == 1 and use_chars == 1 then
-	    prev_h = inputs[L*2+2]
-	    prev_c = inputs[L*2+1]
-	else
-	    prev_h = inputs[L*2+1]
-	    prev_c = inputs[L*2]
-	end
+    	-- c,h from previous timesteps. offsets depend on if we are using both word/chars
+	local prev_h = inputs[L*2+use_words+use_chars]
+	local prev_c = inputs[L*2+use_words+use_chars-1]
 	-- the input to this layer
 	if L == 1 then
 	    if use_chars == 1 then
