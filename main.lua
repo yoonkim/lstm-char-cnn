@@ -31,11 +31,11 @@ cmd:text('Options')
 cmd:option('-data_dir','data/ptb_mod','data directory. Should contain the file input.txt with input data')
 -- model params
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
-cmd:option('-use_words', 1, 'use words (1=yes)')
+cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 400, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{20,20,20,20,20}', 'number of feature maps in the CNN')
+cmd:option('-feature_maps', '{50,200,200,200,200}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{2,3,4,5,6}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-batch_norm', 1, 'use batch normalization over input embeddings (1=yes)')
@@ -140,6 +140,12 @@ for name,proto in pairs(protos) do
     clones[name] = model_utils.clone_many_times(proto, opt.seq_length, not proto.parameters)
 end
 
+function get_input(x, x_char, t)
+    local u = {}
+    if opt.use_chars == 1 then table.insert(u, x_char[{{},t}]) end
+    if opt.use_words == 1 then table.insert(u, x[{{},t}]) end
+    return u
+end
 -- evaluate the loss over an entire split
 function eval_split(split_idx, max_batches, full_eval)
     print('evaluating loss over split index ' .. split_idx)
@@ -165,7 +171,7 @@ function eval_split(split_idx, max_batches, full_eval)
 	    -- forward pass
 	    for t=1,opt.seq_length do
 		clones.rnn[t]:evaluate() -- for dropout proper functioning
-		local lst = clones.rnn[t]:forward{x_char[{{}, t}], x[{{},t}], unpack(rnn_state[t-1])}
+		local lst = clones.rnn[t]:forward{unpack(get_input(x, x_char, t)), unpack(rnn_state[t-1])}
 		rnn_state[t] = {}
 		for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end
 		prediction = lst[#lst] 
@@ -180,7 +186,7 @@ function eval_split(split_idx, max_batches, full_eval)
         local x, y, x_char = loader:next_batch(split_idx)
 	protos.rnn:evaluate() -- just need one clone
 	for t = 1, x:size(2) do
-	    local lst = protos.rnn:forward{x_char[{{},t}], x[{{},t}], unpack(rnn_state[0])}
+	    local lst = protos.rnn:forward{unpack(get_input(x, x_char, t)), unpack(rnn_state[0])}
 	    rnn_state[0] = {}
 	    for i=1,#init_state do table.insert(rnn_state[0], lst[i]) end
 	    prediction = lst[#lst] 
@@ -221,7 +227,7 @@ function feval(x)
     local loss = 0
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
-        local lst = clones.rnn[t]:forward{x_char[{{}, t}], x[{{},t}], unpack(rnn_state[t-1])}
+        local lst = clones.rnn[t]:forward{unpack(get_input(x, x_char, t)), unpack(rnn_state[t-1])}
         rnn_state[t] = {}
         for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
         predictions[t] = lst[#lst] -- last element is the prediction
@@ -235,7 +241,7 @@ function feval(x)
         -- backprop through loss, and softmax/linear
         local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
         table.insert(drnn_state[t], doutput_t)
-        local dlst = clones.rnn[t]:backward({x_char[{{}, t}], x[{{},t}], unpack(rnn_state[t-1])}, drnn_state[t])
+        local dlst = clones.rnn[t]:backward({unpack(get_input(x, x_char, t)), unpack(rnn_state[t-1])}, drnn_state[t])
         drnn_state[t-1] = {}
 	local tmp = opt.use_words + opt.use_chars -- not the safest way but quick
         for k,v in pairs(dlst) do
