@@ -8,7 +8,7 @@ else
 end
 
 function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size, char_vocab_size, char_vec_size,
-	 			     feature_maps, kernels, length, use_words, use_chars)
+	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm)
     -- rnn_size = dimensionality of hidden layers
     -- n = number of layers
     -- dropout = dropout probability
@@ -66,6 +66,9 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	    else -- word_vecs only
 	        x = word_vec_layer(inputs[1])
 		input_size_L = word_vec_size
+	    end
+	    if batch_norm == 1 then	
+	        x = nn.BatchNormalization(0)(x)
 	    end
 	else 
 	    x = outputs[(L-1)*2] -- prev_h
