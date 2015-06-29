@@ -17,7 +17,6 @@ require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-LSTM = require 'model.LSTM'
 TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 
@@ -31,14 +30,15 @@ cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb_mod','data directory. Should contain the file input.txt with input data')
 -- model params
-cmd:option('-rnn_size', 50, 'size of LSTM internal state')
+cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 1, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
-cmd:option('-word_vec_size', 50, 'dimensionality of word embeddings')
+cmd:option('-word_vec_size', 400, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{10,10,10,10,10}', 'number of feature maps in the CNN')
+cmd:option('-feature_maps', '{20,20,20,20,20}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{2,3,4,5,6}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
+cmd:option('-batch_norm', 1, 'use batch normalization over input embeddings (1=yes)')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.8,'learning rate decay')
@@ -90,7 +90,7 @@ protos = {}
 print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
 protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
 	     		    opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-			    opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars)
+			    opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm)
 
 -- the initial state of the cell/hidden states
 init_state = {}
