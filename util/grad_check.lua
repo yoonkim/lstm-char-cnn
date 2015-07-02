@@ -1,5 +1,5 @@
 require 'nn'
-require 'util/TensorProd'
+require 'TensorProd'
 x1 = torch.randn(40,15)
 x2 = torch.randn(40,10)
 y = torch.randn(40,1)
