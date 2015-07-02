@@ -11,7 +11,6 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 require 'lfs'
-require 'util.OneHot'
 require 'util.Squeeze'
 require 'util.misc'
 
@@ -38,7 +37,7 @@ cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
 cmd:option('-feature_maps', '{100,200,200,200,100}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{2,3,4,5,6}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
-cmd:option('-batch_norm', 1, 'use batch normalization over input embeddings (1=yes)')
+cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.8,'learning rate decay')
@@ -52,8 +51,8 @@ cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
-cmd:option('-checkpoint_dir', 'cv2', 'output directory where checkpoints get written')
-cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
+cmd:option('-savefile','word','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
