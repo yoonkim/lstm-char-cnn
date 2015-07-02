@@ -27,7 +27,7 @@ cmd:text('Train a word+character-level language model')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-data_dir','data/ptb','data directory. Should contain the file input.txt with input data')
+cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
 -- model params
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 1, 'use words (1=yes)')
