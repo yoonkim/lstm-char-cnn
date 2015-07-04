@@ -1,6 +1,7 @@
 --[[
 model introspection
 --]]
+
 require 'torch'
 require 'nn'
 require 'nngraph'
@@ -18,7 +19,7 @@ local stringx = require('pl.stringx')
 
 cmd = torch.CmdLine()
 cmd:text()
-cmd:text('Train a word+character-level language model')
+cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
@@ -28,9 +29,11 @@ cmd:text()
 
 -- parse input params
 opt2 = cmd:parse(arg)
-torch.manualSeed(opt.seed)
+
+-- load model
 checkpoint = torch.load(opt2.model)
 opt = checkpoint.opt
+torch.manualSeed(opt.seed)
 protos = checkpoint.protos
 idx2word, word2idx, idx2char, char2idx = table.unpack(opt.vocab)
 
@@ -43,7 +46,7 @@ end
 
 function word2char2idx(word)
     local char_idx = torch.zeros(opt.max_word_l)
-    char_idx:fill(1]) -- fill with padding first
+    char_idx:fill(1) -- fill with padding first
     local l = opt.padding + 1 -- skip beginning padding
     for c in word:gmatch'.' do
         -- while character is valid and we are under max word length
@@ -53,30 +56,6 @@ function word2char2idx(word)
 	end
     end
 end
-
--- recreate the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding)
-print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char)
-
--- the initial state of the cell/hidden states
-init_state = {}
-for L=1,opt.num_layers do
-    local h_init = torch.zeros(opt.batch_size, opt.rnn_size)
-    if opt.gpuid >=0 then h_init = h_init:cuda() end
-    table.insert(init_state, h_init:clone())
-    table.insert(init_state, h_init:clone())
-end
-
-
--- ship the model to the GPU if desired
-if opt.gpuid >= 0 then
-    for k,v in pairs(protos) do v:cuda() end
-end
-
--- put the above things into one flattened parameters tensor
-params, grad_params = model_utils.combine_all_parameters(protos.rnn)
-
-print('number of parameters in the model: ' .. params:nElement())
 
 -- get layers which will be referenced layer (during SGD or introspection)
 function get_layer(layer)
@@ -92,6 +71,75 @@ function get_layer(layer)
     end
 end 
 protos.rnn:apply(get_layer)
+
+-- get conv filter layers
+conv_filters = {}
+cnn:apply(function (x) if x.name ~= nil then if x.name:sub(1,4)=='conv' then 
+			  table.insert(conv_filters, x) end end end)
+
+-- for each word get the feature map values as well
+-- as the chargrams that activate the feature map (i.e. max)
+function get_max_chargrams()
+    local result = {}
+    local char_idx_all = torch.zeros(#idx2word, opt.max_word_l)
+    for i = 1, #idx2word do
+        char_idx_all[i] = word2char2idx(opt.START .. word2idx[i] .. opt.END)
+    end
+    local char_vecs_all = char_vecs:forward(char_idx_all) -- vocab_size x max_word_l x char_vec_size
+    for i = 1, #conv_filters do
+        local conv_filter = conv_filters[i]
+	local width = conv_filter.kW
+	result[width] = {}
+	local conv_output = conv_filter:forward(char_vecs_all,2)
+	local max_val, max_arg = torch.max(conv_output) -- get max values and argmaxes
+	max_val = max_val:squeeze()
+	max_arg =  max_arg:squeeze()
+	result[width][1] = max_val
+	result[width][2] = {} -- this is where we'll store the chargrams (as strings)
+	for j = 1, #idx2word do
+    	    local chargrams = {}
+	    for k = 1, max_arg:size(2) do
+	        local c = {}
+	        local start_char = max_arg[j][k] 
+		local end_char = max_arg[j][k] + width - 1
+		for l = start_char, end_char do
+		    table.insert(c, idx2char[char_idx_all[j][l]])
+		end
+		chargrams[#chargrams + 1] = table.concat(c)
+	    end
+	    result[width][2][j] = chargrams
+	end
+    end
+    return result
+end
+
+result = get_max_chargrams()
+max_chargrams = {}
+for u,v in pairs(result) do
+    local max_val, max_arg = torch.max(v[1],1)
+    max_val = max_val:squeeze()
+    max_arg = max_arg:squeeze()
+    for i = 1, max_arg:size(1) do -- for each feature map
+        local chargram = v[2][max_arg[i]][i]
+	max_chargrams[chargram] = max_val[i]
+    end
+end
+-- the initial state of the cell/hidden states
+init_state = {}
+for L=1,opt.num_layers do
+    local h_init = torch.zeros(opt.batch_size, opt.rnn_size)
+    if opt.gpuid >=0 then h_init = h_init:cuda() end
+    table.insert(init_state, h_init:clone())
+    table.insert(init_state, h_init:clone())
+end
+
+
+-- ship the model to the GPU if desired
+if opt.gpuid >= 0 then
+    for k,v in pairs(protos) do v:cuda() end
+end
+
+print('number of parameters in the model: ' .. params:nElement())
 
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
@@ -159,113 +207,4 @@ function eval_split(split_idx, max_batches, full_eval)
     local perp = torch.exp(loss)    
     return perp, total_unk_perp
 end
-
--- do fwd/bwd and return loss, grad_params
-local init_state_global = clone_list(init_state)
-function feval(x)
-    if x ~= params then
-        params:copy(x)
-    end
-    grad_params:zero()
-
-    ------------------ get minibatch -------------------
-    local x, y, x_char = loader:next_batch(1) --from train
-    if opt.gpuid >= 0 then -- ship the input arrays to GPU
-        -- have to convert to float because integers can't be cuda()'d
-        x = x:float():cuda()
-        y = y:float():cuda()
-	x_char = x_char:float():cuda()
-    end
-    ------------------- forward pass -------------------
-    local rnn_state = {[0] = init_state_global}
-    local predictions = {}           -- softmax outputs
-    local loss = 0
-    for t=1,opt.seq_length do
-        clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
-        local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
-        rnn_state[t] = {}
-        for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
-        predictions[t] = lst[#lst] -- last element is the prediction
-        loss = loss + clones.criterion[t]:forward(predictions[t], y[{{}, t}])
-    end
-    loss = loss / opt.seq_length
-    ------------------ backward pass -------------------
-    -- initialize gradient at time t to be zeros (there's no influence from future)
-    local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
-    for t=opt.seq_length,1,-1 do
-        -- backprop through loss, and softmax/linear
-        local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
-        table.insert(drnn_state[t], doutput_t)
-	table.insert(rnn_state[t-1], drnn_state[t])
-        local dlst = clones.rnn[t]:backward(get_input(x, x_char, t, rnn_state[t-1]), drnn_state[t])
-        drnn_state[t-1] = {}
-	local tmp = opt.use_words + opt.use_chars -- not the safest way but quick
-        for k,v in pairs(dlst) do
-            if k > tmp then -- k == 1 is gradient on x, which we dont need
-                -- note we do k-1 because first item is dembeddings, and then follow the 
-                -- derivatives of the state, starting at index 2. I know...
-                drnn_state[t-1][k-tmp] = v
-            end
-        end	
-    end
-    ------------------------ misc ----------------------
-    -- transfer final state to initial state (BPTT)
-    init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
-
-    -- renormalize gradients
-    local grad_norm = grad_params:norm()
-    if grad_norm > opt.max_grad_norm then
-        local shrink_factor = opt.max_grad_norm / grad_norm
-	grad_params:mul(shrink_factor)
-    end    
-    params:add(grad_params:mul(-lr)) -- update params
-    return loss
-end
-
--- start optimization here
-train_losses = {}
-val_losses = {}
-lr = opt.learning_rate -- starting learning rate which will be decayed
-local iterations = opt.max_epochs * loader.split_sizes[1]
-for i = 1, iterations do
-    local epoch = i / loader.split_sizes[1]
-
-    local timer = torch.Timer()
-    local time = timer:time().real
-
-    train_loss = feval(params) -- fwd/backprop and update params
-    if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
-    train_losses[i] = train_loss
-
-    -- decay learning rate after epoch
-    if i % loader.split_sizes[1] == 0 and epoch >= opt.learning_rate_decay_after then        
-        lr = lr * opt.learning_rate_decay        
-    end    
-
-    -- every now and then or on last iteration
-    if i % opt.eval_val_every == 0 or i == iterations or i % loader.split_sizes[1] == 0 then
-        -- evaluate loss on validation data
-        local val_loss = eval_split(2) -- 2 = validation
-        val_losses[i] = val_loss
-
-        local savefile = string.format('%s/lm_%s_epoch%.2f_%.2f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
-        print('saving checkpoint to ' .. savefile)
-        local checkpoint = {}
-        checkpoint.protos = protos
-        checkpoint.opt = opt
-        checkpoint.train_losses = train_losses
-        checkpoint.val_loss = val_loss
-        checkpoint.val_losses = val_losses
-        checkpoint.i = i
-        checkpoint.epoch = epoch
-        checkpoint.vocab = {loader.idx2word, loader.word2idx, loader.idx2char, loader.char2idx}
-        torch.save(savefile, checkpoint)
-    end
-
-    if i % opt.print_every == 0 then
-        print(string.format("%d/%d (epoch %.2f), train_loss = %6.4f, grad/param norm = %6.4e, time/batch = %.2fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
-    end   
-    if i % 10 == 0 then collectgarbage() end
-end
-
 
