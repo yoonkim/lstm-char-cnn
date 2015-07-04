@@ -9,6 +9,7 @@ BatchLoaderUnk.__index = BatchLoaderUnk
 function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_word_l)
     local self = {}
     setmetatable(self, BatchLoaderUnk)
+
     self.padding = padding or 0
     local train_file = path.join(data_dir, 'train.txt')
     local valid_file = path.join(data_dir, 'valid.txt')
@@ -40,7 +41,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     else
         self.max_word_l = max_word_l
     end
-    self.max_word_l = self.max_word_l + self.padding
+    self.max_word_l = self.max_word_l + 2*self.padding -- pad at start and end
     -- cut off the end for train/valid sets so that it divides evenly
     -- test set is not cut off
     self.batch_size = batch_size
@@ -112,29 +113,30 @@ end
 
 function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfile, out_charfile)
     print('Processing text into tensors...')
+    local tokens = opt.tokens -- inherit global constants for tokens
     local f, rawdata, output, output_char
     local output_tensors = {} -- output tensors for train/val/test
     local output_chars = {} -- output character for train/val/test sets (not tensors yet)
     local vocab_count = {} -- vocab count 
-    local idx2word = {'|'} -- unknown word token
-    local word2idx = {}; word2idx['|'] = 1
-    local idx2char = {' ','{','}'} -- zero-pad, start-of-word, end-of-word tokens
-    local char2idx = {}; char2idx[' '] = 1; char2idx['{'] = 2; char2idx['}'] = 3
+    local idx2word = {tokens.UNK} -- unknown word token
+    local word2idx = {}; word2idx[tokens.UNK] = 1
+    local idx2char = {tokens.ZEROPAD, tokens.START, tokens.END} -- zero-pad, start-of-word, end-of-word tokens
+    local char2idx = {}; char2idx[tokens.ZEROPAD] = 1; char2idx[tokens.START] = 2; char2idx[tokens.END] = 3
     for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)
         output = {}
 	output_char = {}
         f = torch.DiskFile(input_files[split])
 	rawdata = f:readString('*a') -- read all data at once
 	f:close()
-	rawdata = stringx.replace(rawdata, '\n', ' + ') -- use '+' instead of '<eos>' for end-of-sentence
-	rawdata = stringx.replace(rawdata, '{', ' ') -- '{' is reserved for start-of-word symbol
-	rawdata = stringx.replace(rawdata, '}', ' ') -- '}' is reserved for end-of-word symbol
-	rawdata = stringx.replace(rawdata, '<unk>', '|') -- '<unk>' gets replaced with a single character
+	rawdata = stringx.replace(rawdata, '\n', tokens.UNK) 
+	rawdata = stringx.replace(rawdata, tokens.START, ' ') 
+	rawdata = stringx.replace(rawdata, tokens.END, ' ') 
+	rawdata = stringx.replace(rawdata, '<unk>', tokens.UNK) 
 	for word in rawdata:gmatch'([^%s]+)' do
-	    local chars = {char2idx['{']} -- start-of-word symbol
-	    if string.sub(word,1,1) == '|' and word:len() > 1 then -- unk token with character info available
+	    local chars = {char2idx[tokens.START]} -- start-of-word symbol
+	    if string.sub(word,1,1) == tokens.UNK and word:len() > 1 then -- unk token with character info available
 	        word = string.sub(word, 3)
-		output[#output + 1] = word2idx['|']
+		output[#output + 1] = word2idx[tokens.UNK]
 	    else
 		if word2idx[word]==nil then
 		    idx2word[#idx2word + 1] = word -- create word-idx/idx-word mappings
@@ -149,7 +151,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
 		end
 		chars[#chars + 1] = char2idx[char]
 	    end
-	    chars[#chars + 1] = char2idx['}'] -- end-of-word symbol
+	    chars[#chars + 1] = char2idx[tokens.END] -- end-of-word symbol
 	    output_char[#output_char + 1] = chars
 	end
 	output_tensors[split] = torch.LongTensor(output)

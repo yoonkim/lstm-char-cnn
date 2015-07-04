@@ -1,3 +1,11 @@
+--[[
+Torch module for tensor product
+vec1 = first input vector (size n)
+vec2 = second input vector (size m)
+T = 3D tensor (size o x n x m where o is the output size)
+output = vec1 x T x vec2 (size o)
+--]]
+
 local TensorProd, parent = torch.class('nn.TensorProd', 'nn.Module')
 
 function TensorProd:__init(vec1_size, vec2_size, output_size)
@@ -6,9 +14,9 @@ function TensorProd:__init(vec1_size, vec2_size, output_size)
     self.gradBias = torch.Tensor(output_size)
     self.weight = torch.Tensor(output_size, vec1_size, vec2_size)
     self.gradWeight = torch.Tensor(output_size, vec1_size, vec2_size)
-    --self.tmp = torch.Tensor()
+    self.tmp = torch.Tensor() -- tmp tensor for intermediate calcs
     self.gradInput = {torch.Tensor(), torch.Tensor()}
-    --self.ab = torch.Tensor(vec1_size, vec2_size) -- outer prods 
+    self.ab = torch.Tensor(vec1_size, vec2_size) -- outer prod storage during grad update
     self:reset()
 end
 
@@ -23,21 +31,26 @@ function TensorProd:updateOutput(input)
     assert(a:dim()==b:dim(), 'input tensors should have same number of dims (1 or 2)')
     if a:dim()==1 then
         self.output:resize(self.weight:size(1))
-	--self.tmp:resize(self.weight:size(1), self.weight:size(2))
+	self.tmp:resize(self.weight:size(1), self.weight:size(2))
+	self.output:copy(self.bias)
 	for i = 1, self.weight:size(1) do
-	    --self.tmp[i]:mv(self.weight[i], b)	    
-	    --self.output[i] = self.tmp[i]:dot(a)
-	    self.output[i] = a:dot(torch.mv(self.weight[i],b))
+	    self.tmp[i]:mv(self.weight[i], b)	    
 	end
-	self.output = self.output + self.bias
+	self.output:addmv(1, self.tmp, a)
     elseif a:dim()==2 then -- mini-batch processing
         local batch_size = a:size(1)
 	self.output:resize(batch_size, self.weight:size(1))
-	--self.tmp:resize(self.weight:size(1), batch_size, self.weight:size(2))
-	for i = 1, self.weight:size(1) do
-	    --self.tmp[i]:mm(b, self.weight[i]:t())	    
-	    self.output[{{},i}] = torch.sum(torch.cmul(torch.mm(b, self.weight[i]:t()), a),2) + self.bias[i]
+	if not self.buffer or self.buffer:nElement() ~= batch_size then
+	    self.buffer = torch.ones(batch_size)
+	    self.buffer2 = torch.ones(a:size(2))
 	end
+	self.tmp:resize(self.weight:size(1), batch_size, self.weight:size(2))
+	for i = 1, self.weight:size(1) do
+	    self.tmp[i]:addmm(0, self.tmp[i], 1, b, self.weight[i]:t())
+	    self.tmp[i]:cmul(a)
+	    self.output[{{},i}]:mv(self.tmp[i], self.buffer2)	    
+	end
+	self.output:addr(1, self.buffer, self.bias)
     else
         error("input must be 1D or 2D tensors")
     end
@@ -69,17 +82,17 @@ end
 function TensorProd:accGradParameters(input, gradOutput)
     local a, b = table.unpack(input)
     if a:dim()==1 then
-        local ab = torch.ger(a,b)
+        self.ab:ger(a,b)
 	self.gradBias:add(gradOutput)
 	for i = 1, self.weight:size(1) do
-	    self.gradWeight[i]:add(ab*gradOutput[i])
+	    self.gradWeight[i]:add(gradOutput[i], self.ab)
 	end    
     else -- mini-batch processing
         self.gradBias:add(gradOutput:sum(1))
 	for i = 1, a:size(1) do
-	    local ab = torch.ger(a[i],b[i])
+	    self.ab:ger(a[i],b[i])
 	    for j = 1, self.weight:size(1) do
-	        self.gradWeight[j]:add(ab*gradOutput[i][j])
+	        self.gradWeight[j]:add(gradOutput[i][j], self.ab)
 	    end
 	end
     end
