@@ -23,7 +23,7 @@ function TDNN.tdnn(length, input_size, feature_maps, kernels)
 	layer1_concat = nn.JoinTable(3)(layer1)
 	output = nn.Squeeze()(layer1_concat)
     else
-        output = nn.Squeeze()(pool_layer)    
+        output = nn.Squeeze()(layer1[1])    
     end
     return nn.gModule({input}, {output})
 end
