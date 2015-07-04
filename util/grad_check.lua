@@ -14,7 +14,7 @@ loss = crit:forward(pred, y)
 dl_dp = crit:backward(pred,y)
 grad_input = m:backward({x1,x2}, dl_dp)
 grad_x1, grad_x2 = table.unpack(grad_input)
-eps = 1e-4
+eps = 1e-7
 
 
 for i = 1, grad_x2:size(1) do
