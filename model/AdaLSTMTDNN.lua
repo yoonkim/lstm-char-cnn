@@ -43,13 +43,15 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
       table.insert(inputs, nn.Identity()()) -- prev_h[L]
     end
+    local attend_layer_size = 200
     local outputs = {}
     local prev_h_final = inputs[n*2+use_words+use_chars]    
     local cnn_output_size = torch.Tensor(feature_maps):sum()
     local attend_layer = nn.Sequential() -- attention layer
-    attend_layer:add(nn.Linear(cnn_output_size + word_vec_size + rnn_size, rnn_size))
+    attend_layer:add(nn.Linear(cnn_output_size + word_vec_size + rnn_size, attend_layer_size))
     attend_layer:add(nn.Tanh())
-    attend_layer:add(nn.Linear(rnn_size,1))
+    --if dropout > 0 then attend_layer:add(nn.Dropout(dropout)) end
+    attend_layer:add(nn.Linear(attend_layer_size,1))
     attend_layer:add(nn.Squeeze())
     attend_layer:add(nn.Sigmoid())
     for L = 1,n do
