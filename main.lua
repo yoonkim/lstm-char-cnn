@@ -34,8 +34,8 @@ cmd:option('-use_words', 1, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 500, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{30,30,30,30,30}', 'number of feature maps in the CNN')
-cmd:option('-kernels', '{1,2,3,4,5}', 'conv net kernel widths')
+cmd:option('-feature_maps', '{25,50,75,100}', 'number of feature maps in the CNN')
+cmd:option('-kernels', '{1,2,3,4}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 -- optimization
@@ -77,13 +77,14 @@ loadstring("opt.kernels = " .. opt.kernels)() -- get kernel sizes
 opt.padding = torch.Tensor(opt.kernels):max()-1 -- padding is max kernel size minus one
 loadstring("opt.feature_maps = " .. opt.feature_maps)() -- get feature map sizes
 opt.padding = 0 
+
 -- global constants for certain tokens
 opt.tokens = {}
-opt.tokens.EOS = ' + ' -- <eos> token
+opt.tokens.EOS = ' + ' -- <eos> (end of sentence) token
 opt.tokens.UNK = '|' -- unk word token
 opt.tokens.START = '{' -- start-of-word token
 opt.tokens.END = '}' -- end-of-word token
-opt.tokens.ZEROPAD = ' ' -- zero-pad token (for character-level stuff)
+opt.tokens.ZEROPAD = ' ' -- zero-pad token 
 
 -- create the data loader class
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding)
