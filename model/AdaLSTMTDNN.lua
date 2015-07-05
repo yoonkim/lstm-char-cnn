@@ -82,6 +82,9 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	        x = word_vec_layer(inputs[1])
 		input_size_L = word_vec_size
 	    end
+	    if batch_norm == 1 then
+	        x = nn.BatchNormalization(0)(x)
+	    end
 	else 
 	    x = outputs[(L-1)*2] -- prev_h
 	    if dropout > 0 then x = nn.Dropout(dropout)(x) end -- apply dropout, if any
