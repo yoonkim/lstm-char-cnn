@@ -23,7 +23,7 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','model.t7', 'model file')
+cmd:option('-model','cv/lm_char_epoch2.00_171.86.t7', 'model file')
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
 
@@ -35,7 +35,7 @@ checkpoint = torch.load(opt2.model)
 opt = checkpoint.opt
 torch.manualSeed(opt.seed)
 protos = checkpoint.protos
-idx2word, word2idx, idx2char, char2idx = table.unpack(opt.vocab)
+idx2word, word2idx, idx2char, char2idx = table.unpack(checkpoint.vocab)
 
 if opt.gpuid >= 0 then
     print('using CUDA on GPU ' .. opt.gpuid .. '...')
@@ -55,6 +55,7 @@ function word2char2idx(word)
 	    l = l + 1
 	end
     end
+    return char_idx
 end
 
 -- get layers which will be referenced layer (during SGD or introspection)
@@ -83,15 +84,16 @@ function get_max_chargrams()
     local result = {}
     local char_idx_all = torch.zeros(#idx2word, opt.max_word_l)
     for i = 1, #idx2word do
-        char_idx_all[i] = word2char2idx(opt.START .. word2idx[i] .. opt.END)
+        char_idx_all[i] = word2char2idx(opt.tokens.START .. idx2word[i] .. opt.tokens.END)
     end
     local char_vecs_all = char_vecs:forward(char_idx_all) -- vocab_size x max_word_l x char_vec_size
     for i = 1, #conv_filters do
+    	local max_val, max_arg
         local conv_filter = conv_filters[i]
 	local width = conv_filter.kW
 	result[width] = {}
-	local conv_output = conv_filter:forward(char_vecs_all,2)
-	local max_val, max_arg = torch.max(conv_output) -- get max values and argmaxes
+	local conv_output = conv_filter:forward(char_vecs_all)
+	max_val, max_arg = torch.max(conv_output,2) -- get max values and argmaxes
 	max_val = max_val:squeeze()
 	max_arg =  max_arg:squeeze()
 	result[width][1] = max_val
@@ -121,7 +123,8 @@ for u,v in pairs(result) do
     max_arg = max_arg:squeeze()
     for i = 1, max_arg:size(1) do -- for each feature map
         local chargram = v[2][max_arg[i]][i]
-	max_chargrams[chargram] = max_val[i]
+	local word = idx2word[max_arg[i]]
+	max_chargrams[i] = {word, chargram, max_val[i]}
     end
 end
 -- the initial state of the cell/hidden states
@@ -133,13 +136,7 @@ for L=1,opt.num_layers do
     table.insert(init_state, h_init:clone())
 end
 
-
--- ship the model to the GPU if desired
-if opt.gpuid >= 0 then
-    for k,v in pairs(protos) do v:cuda() end
-end
-
-print('number of parameters in the model: ' .. params:nElement())
+--print('number of parameters in the model: ' .. params:nElement())
 
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
