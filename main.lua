@@ -17,7 +17,7 @@ require 'util.misc'
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.LSTMTDNN'
+LSTMTDNN = require 'model.AdaLSTMTDNN'
 
 local stringx = require('pl.stringx')
 
@@ -27,15 +27,15 @@ cmd:text('Train a word+character-level language model')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-data_dir','data/ptb_full','data directory. Should contain train.txt/valid.txt/test.txt with input data')
+cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
 -- model params
-cmd:option('-rnn_size', 400, 'size of LSTM internal state')
+cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 1, 'use words (1=yes)')
-cmd:option('-use_chars', 0, 'use characters (1=yes)')
-cmd:option('-word_vec_size', 250, 'dimensionality of word embeddings')
+cmd:option('-use_chars', 1, 'use characters (1=yes)')
+cmd:option('-word_vec_size', 500, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
 cmd:option('-feature_maps', '{30,30,30,30,30}', 'number of feature maps in the CNN')
-cmd:option('-kernels', '{2,3,4,5,6}', 'conv net kernel widths')
+cmd:option('-kernels', '{1,2,3,4,5}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 -- optimization
@@ -52,7 +52,7 @@ cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','word-char-nobatch','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-savefile','word-char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
