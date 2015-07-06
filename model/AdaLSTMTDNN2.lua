@@ -66,7 +66,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 		input_size_L = word_vec_size + cnn_output_size
 	        if use_words == 1 then
 		    word_vec = word_vec_layer(inputs[2])
-		    local char_vec_sum = nn.Sum(3)(char_vec) 
+		    local char_vec_sum = nn.Sum(2)(char_vec) 
 		    local input_attention = nn.JoinTable(2)({char_vec_sum, word_vec, prev_h_final})
 		    local attention_output = attend_layer(input_attention)
 		    local cnn_output2 = nn.CMulTable()({cnn_output, attention_output})
