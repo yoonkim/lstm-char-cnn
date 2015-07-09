@@ -48,9 +48,9 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     local prev_h_final = inputs[n*2+use_words+use_chars]    
     local cnn_output_size = torch.Tensor(feature_maps):sum()
     local attend_layer = nn.Sequential() -- attention layer
-    attend_layer:add(nn.Linear(char_vec_size + word_vec_size + rnn_size, attend_layer_size))
-    attend_layer:add(nn.Tanh())
-    attend_layer:add(nn.Linear(attend_layer_size,cnn_output_size))
+    attend_layer:add(nn.Linear(char_vec_size + word_vec_size + rnn_size, cnn_output_size))
+    --attend_layer:add(nn.Tanh())
+    --attend_layer:add(nn.Linear(attend_layer_size,cnn_output_size))
     attend_layer:add(nn.SoftMax())
     for L = 1,n do
     	-- c,h from previous timesteps. offsets depend on if we are using both word/chars
