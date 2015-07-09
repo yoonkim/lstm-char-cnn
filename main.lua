@@ -18,7 +18,7 @@ require 'util.LookupTableOneHot'
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.AdaLSTMTDNN2'
+LSTMTDNN = require 'model.LSTMTDNN'
 
 local stringx = require('pl.stringx')
 
@@ -33,10 +33,10 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/vali
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 1, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
-cmd:option('-word_vec_size', 400, 'dimensionality of word embeddings')
+cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{25,50,75,100,150}', 'number of feature maps in the CNN')
-cmd:option('-kernels', '{1,2,3,4,5}', 'conv net kernel widths')
+cmd:option('-feature_maps', '{25,50,75,100,150,200}', 'number of feature maps in the CNN')
+cmd:option('-kernels', '{1,2,3,4,5,6}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 -- optimization
