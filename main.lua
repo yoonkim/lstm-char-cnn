@@ -17,7 +17,7 @@ require 'util.LookupTableOneHot'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-TDNN = require 'model.TDNN'
+TDNN = require 'model.AdaTDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 
 local stringx = require('pl.stringx')
@@ -53,7 +53,7 @@ cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-savefile','char-attend','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
@@ -285,12 +285,13 @@ train_losses = {}
 val_losses = {}
 lr = opt.learning_rate -- starting learning rate which will be decayed
 local iterations = opt.max_epochs * loader.split_sizes[1]
+if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
 for i = 1, iterations do
     local epoch = i / loader.split_sizes[1]
 
     local timer = torch.Timer()
     local time = timer:time().real
-
+    
     train_loss = feval(params) -- fwd/backprop and update params
     if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
     train_losses[i] = train_loss
