@@ -74,7 +74,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
 	    x_batches = {data:resize(1, data:size(1)):expand(batch_size, data:size(2))}
 	    y_batches = {ydata:resize(1, ydata:size(1)):expand(batch_size, ydata:size(2))}
 	    data_char = data_char:resize(1, data_char:size(1), data_char:size(2))
-	    x_char_batches = data_char:expand(batch_size, data_char:size(2), data_char:size(3))
+	    x_char_batches = {data_char:expand(batch_size, data_char:size(2), data_char:size(3))}
 	    self.split_sizes[split] = 1	
 	end
   	self.all_batches[split] = {x_batches, y_batches, x_char_batches}
