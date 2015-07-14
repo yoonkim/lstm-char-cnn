@@ -13,11 +13,10 @@ require 'optim'
 require 'lfs'
 require 'util.Squeeze'
 require 'util.misc'
-require 'util.LookupTableOneHot'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-TDNN = require 'model.AdaTDNN'
+TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 
 local stringx = require('pl.stringx')
@@ -34,15 +33,15 @@ cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
-cmd:option('-char_vec_size', 25 , 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{50,75,100,125,150,175,200}', 'number of feature maps in the CNN')
+cmd:option('-char_vec_size', 40 , 'dimensionality of character embeddings')
+cmd:option('-feature_maps', '{50,100,150,200,200,200,200}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.8,'learning rate decay')
-cmd:option('-learning_rate_decay_after',6,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-dropout',0.5,'dropout to use just before classifier. 0 = no dropout')
 cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
@@ -53,7 +52,8 @@ cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','char-attend','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-savefile','char-large','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
@@ -96,12 +96,26 @@ opt.max_word_l = loader.max_word_l
 -- make sure output directory exists
 if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
 
+if path.exists(opt.checkpoint) then -- start re-training from a checkpoint
+   print('loading ' .. opt.checkpoint .. ' for retraining')
+   checkpoint = torch.load(opt.checkpoint)
+   opt = checkpoint.opt
+   retrain = true
+end
+
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
 print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
-protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
-	     		    opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-			    opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm)
+
+if retrain then
+    protos = checkpoint.protos
+else
+    protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
+				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
+				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm)
+   -- training criterion (negative log likelihood)
+   protos.criterion = nn.ClassNLLCriterion()
+end
 
 -- the initial state of the cell/hidden states
 init_state = {}
@@ -112,9 +126,6 @@ for L=1,opt.num_layers do
     table.insert(init_state, h_init:clone())
 end
 
--- training criterion (negative log likelihood)
-protos.criterion = nn.ClassNLLCriterion()
-
 -- ship the model to the GPU if desired
 if opt.gpuid >= 0 then
     for k,v in pairs(protos) do v:cuda() end
@@ -124,7 +135,9 @@ end
 params, grad_params = model_utils.combine_all_parameters(protos.rnn)
 
 -- initialization
-params:uniform(-0.05, 0.05) -- small numbers uniform
+if not retrain then
+   params:uniform(-0.05, 0.05) -- small numbers uniform if starting from scratch
+end
 
 print('number of parameters in the model: ' .. params:nElement())
 
@@ -159,6 +172,7 @@ function get_input(x, x_char, t, prev_states)
     for i = 1, #prev_states do table.insert(u, prev_states[i]) end
     return u
 end
+
 -- evaluate the loss over an entire split
 function eval_split(split_idx, max_batches, full_eval)
     print('evaluating loss over split index ' .. split_idx)
@@ -209,7 +223,7 @@ function eval_split(split_idx, max_batches, full_eval)
 	        unk_perp = unk_perp + tok_perp
 		unk_count = unk_count + 1
 	    end
-	    -- print(t .. '/' .. unk_perp .. '/' .. unk_count .. '/' .. loss)
+	    print(t .. '/' .. unk_perp .. '/' .. unk_count .. '/' .. loss)
 	end
 	total_unk_perp = torch.exp(unk_perp / unk_count)
 	loss = loss / x:size(2)
@@ -306,7 +320,6 @@ for i = 1, iterations do
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
         val_losses[i] = val_loss
-
         local savefile = string.format('%s/lm_%s_epoch%.2f_%.2f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
         print('saving checkpoint to ' .. savefile)
         local checkpoint = {}
@@ -318,6 +331,7 @@ for i = 1, iterations do
         checkpoint.i = i
         checkpoint.epoch = epoch
         checkpoint.vocab = {loader.idx2word, loader.word2idx, loader.idx2char, loader.char2idx}
+	checkpoint.lr = lr
         torch.save(savefile, checkpoint)
     end
 
