@@ -33,20 +33,21 @@ cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
-cmd:option('-char_vec_size', 40 , 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{50,100,150,200,200,200,200}', 'number of feature maps in the CNN')
+cmd:option('-char_vec_size', 35, 'dimensionality of character embeddings')
+cmd:option('-feature_maps', '{50,100,200,400,400,400,400}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
-cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
+cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.8,'learning rate decay')
-cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
-cmd:option('-dropout',0.5,'dropout to use just before classifier. 0 = no dropout')
+cmd:option('-learning_rate_decay_after',6,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',40,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
+cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
@@ -66,6 +67,10 @@ assert(opt.use_words == 1 or opt.use_words == 0, '-use_words has to be 0 or 1')
 assert(opt.use_chars == 1 or opt.use_chars == 0, '-use_chars has to be 0 or 1')
 assert((opt.use_chars + opt.use_words) > 0, 'has to use at least one of words or chars')
 
+if opt.threads > 0 then
+    torch.setnumthreads(opt.threads)
+end
+
 if opt.gpuid >= 0 then
     print('using CUDA on GPU ' .. opt.gpuid .. '...')
     require 'cutorch'
@@ -75,13 +80,13 @@ end
 
 -- some housekeeping
 loadstring("opt.kernels = " .. opt.kernels)() -- get kernel sizes
-opt.padding = torch.Tensor(opt.kernels):max()-1 -- padding is max kernel size minus one
+--opt.padding = torch.Tensor(opt.kernels):max()-1 -- padding is max kernel size minus one
 loadstring("opt.feature_maps = " .. opt.feature_maps)() -- get feature map sizes
 opt.padding = 0 
 
 -- global constants for certain tokens
 opt.tokens = {}
-opt.tokens.EOS = ' + ' -- <eos> (end of sentence) token
+opt.tokens.EOS = '+' -- <eos> (end of sentence) token
 opt.tokens.UNK = '|' -- unk word token
 opt.tokens.START = '{' -- start-of-word token
 opt.tokens.END = '}' -- end-of-word token
