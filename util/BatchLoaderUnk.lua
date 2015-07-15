@@ -128,7 +128,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
         f = torch.DiskFile(input_files[split])
 	rawdata = f:readString('*a') -- read all data at once
 	f:close()
-	rawdata = stringx.replace(rawdata, '\n', tokens.EOS) 
+	rawdata = stringx.replace(rawdata, '\n', ' ' .. tokens.EOS .. ' ') 
 	rawdata = stringx.replace(rawdata, tokens.START, ' ') 
 	rawdata = stringx.replace(rawdata, tokens.END, ' ') 
 	rawdata = stringx.replace(rawdata, '<unk>', tokens.UNK) 
