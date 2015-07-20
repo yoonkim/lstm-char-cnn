@@ -26,7 +26,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 
     -- there will be 2*n+1 inputs if using words or chars, 
     -- otherwise there will be 2*n + 2 inputs
-    local char_vec_layer, word_vec_layer, x, input_size_L, word_vec, char_vec, cnn_softmax
+    local char_vec_layer, word_vec_layer, x, input_size_L, word_vec, char_vec, attend_layer
     local length = length
     local inputs = {}
     if use_chars == 1 then
@@ -43,15 +43,11 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
       table.insert(inputs, nn.Identity()()) -- prev_h[L]
     end
-    local attend_layer_size = 200
     local outputs = {}
     local prev_h_final = inputs[n*2+use_words+use_chars]    
     local cnn_output_size = torch.Tensor(feature_maps):sum()
     local attend_layer = nn.Sequential() -- attention layer
-    attend_layer:add(nn.Linear(3*rnn_size, attend_layer_size))
-    attend_layer:add(nn.Tanh())
-    --if dropout > 0 then attend_layer:add(nn.Dropout(dropout)) end
-    attend_layer:add(nn.Linear(attend_layer_size,rnn_size))
+    attend_layer:add(nn.Linear(rnn_size*3, rnn_size))
     attend_layer:add(nn.Sigmoid())
     for L = 1,n do
     	-- c,h from previous timesteps. offsets depend on if we are using both word/chars
@@ -63,15 +59,16 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	    local char_cnn = TDNN.tdnn(length, char_vec_size, feature_maps, kernels)
 	    char_cnn.name = 'cnn' -- change name so we can refer to it later
 	    local cnn_output = char_cnn(char_vec)		
-	    input_size_L = word_vec_size
+	    input_size_L = rnn_size
 	    word_vec = word_vec_layer(inputs[2])
-	    local cnn_output2 = nn.Tanh()(nn.Linear(cnn_output_size, word_vec_size)(cnn_output))
-	    local input_attention = nn.JoinTable(2)({cnn_output2, word_vec, prev_h_final})
+	    local word_vec2 = nn.Tanh()(nn.Linear(word_vec_size, rnn_size)(word_vec))
+	    local cnn_output2 = nn.Tanh()(nn.Linear(cnn_output_size, rnn_size)(cnn_output))
+	    local input_attention = nn.JoinTable(2)({cnn_output2, word_vec2, prev_h_final})
 	    local attention_output = attend_layer(input_attention) -- p
 	    --local attend_batch1 = nn.Transpose()(nn.Replicate(word_vocab_size, 1, 1)(attention_output))
 	    local attention_output2 = nn.AddConstant(1)(nn.MulConstant(-1)(attention_output)) -- 1 - p
 	    --local attend_batch2 = nn.Transpose()(nn.Replicate(word_vocab_size, 1, 1)(attention_output2)
-	    local x1 = nn.CMulTable()({word_vec, attention_output})
+	    local x1 = nn.CMulTable()({word_vec2, attention_output})
 	    local x2 = nn.CMulTable()({cnn_output2, attention_output2})
 	    x = nn.CAddTable()({x1, x2})
 	    if batch_norm == 1 then
