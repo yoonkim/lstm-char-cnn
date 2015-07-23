@@ -17,7 +17,7 @@ require 'util.misc'
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.LSTMTDNN'
+LSTMTDNN = require 'model.AdaLSTMTDNN'
 
 local stringx = require('pl.stringx')
 
@@ -30,18 +30,19 @@ cmd:text('Options')
 cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
 -- model params
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
-cmd:option('-use_words', 0, 'use words (1=yes)')
+cmd:option('-use_words', 1, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{25,50,50,50,50,50}', 'number of feature maps in the CNN')
-cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
+cmd:option('-feature_maps', '{20,20,20,20,20,20}', 'number of feature maps in the CNN')
+cmd:option('-kernels', '{1,2,3,4,5,6}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.8,'learning rate decay')
 cmd:option('-learning_rate_decay_after',6,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-param_init', 0.05, 'initialize parameters at')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
@@ -53,7 +54,7 @@ cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','char-huge','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-savefile','word-char-small','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
@@ -79,9 +80,10 @@ if opt.gpuid >= 0 then
 end
 
 -- some housekeeping
-loadstring("opt.kernels = " .. opt.kernels)() -- get kernel sizes
+loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
 --opt.padding = torch.Tensor(opt.kernels):max()-1 -- padding is max kernel size minus one
-loadstring("opt.feature_maps = " .. opt.feature_maps)() -- get feature map sizes
+loadstring('opt.feature_maps = ' .. opt.feature_maps)() -- get feature map sizes
+assert(#opt.kernels == #opt.feature_maps, '#kernels has to equal #feature maps')
 opt.padding = 0 
 
 -- global constants for certain tokens
@@ -141,7 +143,7 @@ params, grad_params = model_utils.combine_all_parameters(protos.rnn)
 
 -- initialization
 if not retrain then
-   params:uniform(-0.05, 0.05) -- small numbers uniform if starting from scratch
+   params:uniform(-opt.param_init, opt.param_init) -- small numbers uniform if starting from scratch
 end
 
 print('number of parameters in the model: ' .. params:nElement())
