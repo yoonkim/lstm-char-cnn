@@ -47,7 +47,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     local prev_h_final = inputs[n*2+use_words+use_chars]    
     local cnn_output_size = torch.Tensor(feature_maps):sum()
     local attend_layer = nn.Sequential() -- attention layer
-    attend_layer:add(nn.Linear(rnn_size*3, rnn_size))
+    attend_layer:add(nn.Linear(rnn_size*2, rnn_size))
     attend_layer:add(nn.Sigmoid())
     for L = 1,n do
     	-- c,h from previous timesteps. offsets depend on if we are using both word/chars
@@ -63,7 +63,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	    word_vec = word_vec_layer(inputs[2])
 	    local word_vec2 = nn.Tanh()(nn.Linear(word_vec_size, rnn_size)(word_vec))
 	    local cnn_output2 = nn.Tanh()(nn.Linear(cnn_output_size, rnn_size)(cnn_output))
-	    local input_attention = nn.JoinTable(2)({cnn_output2, word_vec2, prev_h_final})
+	    local input_attention = nn.JoinTable(2)({cnn_output2, prev_h_final})
 	    local attention_output = attend_layer(input_attention) -- p
 	    --local attend_batch1 = nn.Transpose()(nn.Replicate(word_vocab_size, 1, 1)(attention_output))
 	    local attention_output2 = nn.AddConstant(1)(nn.MulConstant(-1)(attention_output)) -- 1 - p
