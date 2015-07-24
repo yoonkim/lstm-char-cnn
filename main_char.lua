@@ -49,7 +49,7 @@ cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',40,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-threads', 16, 'number of threads') 
-cmd:option('-learning_rate_discount', 1, 'learning_rate_discount for cnn output')
+cmd:option('-learning_rate_discount', 0.1, 'learning_rate_discount for cnn output')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
@@ -187,7 +187,12 @@ end
 
 --create output cnn that will be dot-producted with hidden state to get the probabilities
 char_vecs_output = nn.LookupTable(#loader.idx2char, opt.char_vec_size)
-cnn_output = TDNN.tdnn(opt.max_word_l, opt.char_vec_size, {25,50,100,100,125,125,125}, opt.kernels)
+--cnn_output = TDNN.tdnn(opt.max_word_l, opt.char_vec_size, {25,50,100,100,125,125,125}, opt.kernels)
+cnn_output = nn.Sequential()
+cnn_output:add(TDNN.tdnn(opt.max_word_l, opt.char_vec_size, opt.feature_maps, opt.kernels))
+cnn_output:add(nn.Linear(torch.Tensor(opt.feature_maps):sum(), opt.rnn_size))
+cnn_output:add(nn.Tanh())
+
 
 --create dot product and logsoftmax layers
 dot_softmax = nn.Sequential()

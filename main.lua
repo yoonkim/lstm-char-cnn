@@ -17,7 +17,7 @@ require 'util.misc'
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.AdaLSTMTDNN'
+LSTMTDNN = require 'model.LSTMTDNN'
 
 local stringx = require('pl.stringx')
 
@@ -34,7 +34,7 @@ cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{50,75,100,125,150,200,200}', 'number of feature maps in the CNN')
+cmd:option('-feature_maps', '{25,50,125,125,150,150,150}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
@@ -53,8 +53,8 @@ cmd:option('-threads', 16, 'number of threads')
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
-cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','word-char-small','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-checkpoint_dir', 'cv-ptb', 'output directory where checkpoints get written')
+cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
