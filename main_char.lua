@@ -17,7 +17,7 @@ require 'util.misc'
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.AdaLSTMTDNN'
+LSTMTDNN = require 'model.LSTMTDNN_NoPred'
 
 local stringx = require('pl.stringx')
 
@@ -34,7 +34,7 @@ cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{50,75,100,125,150,200,200}', 'number of feature maps in the CNN')
+cmd:option('-feature_maps', '{50,75,100,125,150,200, 200}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
@@ -51,10 +51,10 @@ cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
-cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
+cmd:option('-print_every',1,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
-cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','word-char-small','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-checkpoint_dir', 'cv-char', 'output directory where checkpoints get written')
+cmd:option('-savefile','char-char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
@@ -163,6 +163,37 @@ function get_layer(layer)
 end 
 protos.rnn:apply(get_layer)
 
+--function to character indices for a given word string
+function word2char2idx(word)
+    local char_idx = torch.zeros(opt.max_word_l)
+    char_idx:fill(1) -- fill with padding first
+    local l = opt.padding + 1 -- skip beginning padding
+    for c in word:gmatch'.' do
+        -- while character is valid and we are under max word length
+        if loader.char2idx[c] ~= nil and l <= char_idx:size(1) then
+	    char_idx[l] = loader.char2idx[c]
+	    l = l + 1
+	end
+    end
+    return char_idx
+end
+
+--get character indices for entire vocab
+char_idx_all = torch.zeros(#loader.idx2word, opt.max_word_l)
+for i = 1, #loader.idx2word do
+    char_idx_all[i] = word2char2idx(opt.tokens.START .. loader.idx2word[i] .. opt.tokens.END)
+end
+
+--create output cnn that will be dot-producted with hidden state to get the probabilities
+char_vecs_output = nn.LookupTable(#loader.idx2char, opt.char_vec_size)
+cnn_output = TDNN.tdnn(opt.max_word_l, opt.char_vec_size, {25,50,100,100,125,125,125}, opt.kernels)
+
+--create dot product and logsoftmax layers
+dot_softmax = nn.Sequential()
+dot_softmax:add(nn.MM(false, true))
+dot_softmax:add(nn.LogSoftMax())
+protos.dot_softmax = dot_softmax
+
 -- make a bunch of clones after flattening, as that reallocates memory
 -- not really sure how this part works
 clones = {}
@@ -191,7 +222,12 @@ function eval_split(split_idx, max_batches, full_eval)
     local total_unk_perp = 0
     local unk_perp = 0
     local unk_count = 0
-    local rnn_state = {[0] = init_state}    
+    local rnn_state = {[0] = init_state}  
+
+    --- pre-calculate output embeddings for each batch ---
+    local char_vecs_all = char_vecs_output:forward(char_idx_all)
+    local output_embedding = cnn_output:forward(char_vecs_all)
+  
     if full_eval==nil then -- batch eval        
 	for i = 1,n do -- iterate over batches in the split
 	    -- fetch a batch
@@ -208,7 +244,7 @@ function eval_split(split_idx, max_batches, full_eval)
 		local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
 		rnn_state[t] = {}
 		for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end
-		prediction = lst[#lst] 
+		prediction = clones.dot_softmax[t]:forward({lst[#lst],output_embedding}) 
 		loss = loss + clones.criterion[t]:forward(prediction, y[{{}, t}])
 	    end
 	    -- carry over lstm state
@@ -242,11 +278,12 @@ end
 -- do fwd/bwd and return loss, grad_params
 local init_state_global = clone_list(init_state)
 function feval(x)
+    local n = #init_state
     if x ~= params then
         params:copy(x)
     end
     grad_params:zero()
-
+    local output_grad_temp = torch.zeros(#loader.idx2word, opt.rnn_size)
     ------------------ get minibatch -------------------
     local x, y, x_char = loader:next_batch(1) --from train
     if opt.gpuid >= 0 then -- ship the input arrays to GPU
@@ -255,6 +292,13 @@ function feval(x)
         y = y:float():cuda()
 	x_char = x_char:float():cuda()
     end
+
+    --- pre-calculate output embeddings for each batch ---
+    local char_vecs_all = char_vecs_output:forward(char_idx_all)
+    local output_embedding = cnn_output:forward(char_vecs_all)
+    char_vecs_output:zeroGradParameters()
+    cnn_output:zeroGradParameters()
+
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
     local predictions = {}           -- softmax outputs
@@ -263,19 +307,24 @@ function feval(x)
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
         local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
         rnn_state[t] = {}
-        for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
-        predictions[t] = lst[#lst] -- last element is the prediction
+        for i=1,n do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
+        predictions[t] = clones.dot_softmax[t]:forward({lst[n],output_embedding})
         loss = loss + clones.criterion[t]:forward(predictions[t], y[{{}, t}])
     end
     loss = loss / opt.seq_length
     ------------------ backward pass -------------------
     -- initialize gradient at time t to be zeros (there's no influence from future)
     local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
+    output_grad_temp:zero()
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
         local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
-        table.insert(drnn_state[t], doutput_t)
-	table.insert(rnn_state[t-1], drnn_state[t])
+	local do_dh_t = clones.dot_softmax[t]:backward({rnn_state[t][n],
+							output_embedding}, doutput_t)
+	drnn_state[t][n]:add(do_dh_t[1]) -- add softmax grad to last hidden layer
+	output_grad_temp:add(do_dh_t[2]) -- accumulate softmax grad to backprop into output cnn
+        --table.insert(drnn_state[t], doutput_t)
+	--table.insert(rnn_state[t-1], drnn_state[t])
         local dlst = clones.rnn[t]:backward(get_input(x, x_char, t, rnn_state[t-1]), drnn_state[t])
         drnn_state[t-1] = {}
 	local tmp = opt.use_words + opt.use_chars -- not the safest way but quick
@@ -287,10 +336,15 @@ function feval(x)
             end
         end	
     end
+    local do_dcnn = cnn_output:backward(char_vecs_all, output_grad_temp)
+    local dcnn_dchar = char_vecs_output:backward(char_idx_all, do_dcnn)
+    cnn_output:updateParameters(lr)
+    char_vecs_output:updateParameters(lr)
+
     ------------------------ misc ----------------------
     -- transfer final state to initial state (BPTT)
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
-
+    
     -- renormalize gradients
     local grad_norm = grad_params:norm()
     if grad_norm > opt.max_grad_norm then

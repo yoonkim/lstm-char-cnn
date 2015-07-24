@@ -23,7 +23,7 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','cv/lm_char_epoch2.00_171.86.t7', 'model file')
+cmd:option('-model','cv/lm_char_epoch16.00_159.74.t7', 'model file')
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
 
