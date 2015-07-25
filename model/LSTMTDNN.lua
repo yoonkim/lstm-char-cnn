@@ -8,7 +8,7 @@ else
 end
 
 function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size, char_vocab_size, char_vec_size,
-	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm)
+	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm, use_pos)
     -- rnn_size = dimensionality of hidden layers
     -- n = number of layers
     -- dropout = dropout probability
@@ -21,6 +21,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     -- length = max length of a word
     -- use_words = 1 if use word embeddings, otherwise not
     -- use_chars = 1 if use char embeddings, otherwise not
+    -- use_pos = 1 if have pos-specific transformations, otherwise not
 
     dropout = dropout or 0 
 
@@ -39,6 +40,9 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	word_vec_layer = nn.LookupTable(word_vocab_size, word_vec_size)
 	word_vec_layer.name = 'word_vecs' -- change name so we can refer to it easily later
     end
+    if use_pos == 1 then
+        pos_layer = nn.Diag(length, char_vec_size)
+    end
     for L = 1,n do
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
       table.insert(inputs, nn.Identity()()) -- prev_h[L]
@@ -51,7 +55,10 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	-- the input to this layer
 	if L == 1 then
 	    if use_chars == 1 then
-		char_vec = char_vec_layer(inputs[1]) 
+		char_vec = char_vec_layer(inputs[1])
+		if use_pos == 1 then
+		    char_vec = pos_layer(char_vec)
+		end 
 		local char_cnn = TDNN.tdnn(length, char_vec_size, feature_maps, kernels)
 		char_cnn.name = 'cnn' -- change name so we can refer to it later
 		local cnn_output = char_cnn(char_vec)
