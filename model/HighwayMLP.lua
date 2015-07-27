@@ -16,9 +16,9 @@ function HighwayMLP.mlp(size, num_layers, bias, f)
         output = f(nn.Linear(size, size)(inputs[i]))
         transform_gate = nn.Sigmoid()(nn.AddConstant(bias)(nn.Linear(size, size)(inputs[i])))
         carry_gate = nn.AddConstant(1)(nn.MulConstant(-1)(transform_gate))
-	transform_gate = nn.CMulTable()({transform_gate, output})
-	carry_gate = nn.CMulTable()({carry_gate, inputs[i]})
-	output = nn.CAddTable()({transform_gate, carry_gate})
+	output = nn.CAddTable()({
+	       nn.CMulTable()({transform_gate, output}),
+	       nn.CMulTable()({carry_gate, inputs[i]})	})
 	table.insert(inputs, output)
     end
     return nn.gModule({input},{output})
