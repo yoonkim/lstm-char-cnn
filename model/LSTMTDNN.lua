@@ -33,12 +33,12 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     local inputs = {}
     if use_chars == 1 then
         table.insert(inputs, nn.Identity()()) -- batch_size x word length (char indices)
-	char_vec_layer = nn.LookupTable(char_vocab_size, char_vec_size)
+	char_vec_layer = LookupTable(char_vocab_size, char_vec_size)
 	char_vec_layer.name = 'char_vecs' -- change name so we can refer to it easily later
     end
     if use_words == 1 then
         table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices)
-	word_vec_layer = nn.LookupTable(word_vocab_size, word_vec_size)
+	word_vec_layer = LookupTable(word_vocab_size, word_vec_size)
 	word_vec_layer.name = 'word_vecs' -- change name so we can refer to it easily later
     end
     for L = 1,n do
@@ -86,19 +86,18 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	local i2h = nn.Linear(input_size_L, 4 * rnn_size)(x)
 	local h2h = nn.Linear(rnn_size, 4 * rnn_size)(prev_h)
 	local all_input_sums = nn.CAddTable()({i2h, h2h})
-	-- decode the gates
-	local sigmoid_chunk = nn.Narrow(2, 1, 3 * rnn_size)(all_input_sums)
+	
+	local sigmoid_chunk = nn.Narrow(2, 1, 3*rnn_size)(all_input_sums)
 	sigmoid_chunk = nn.Sigmoid()(sigmoid_chunk)
-	local in_gate = nn.Narrow(2, 1, rnn_size)(sigmoid_chunk)
-	local out_gate = nn.Narrow(2, rnn_size + 1, rnn_size)(sigmoid_chunk)
-	local forget_gate = nn.Narrow(2, 2 * rnn_size + 1, rnn_size)(sigmoid_chunk)
-	-- decode the write inputs
-	local in_transform = nn.Narrow(2, 3 * rnn_size + 1, rnn_size)(all_input_sums)
-	in_transform = nn.Tanh()(in_transform)
+	local in_gate = nn.Narrow(2,1,rnn_size)(sigmoid_chunk)
+	local out_gate = nn.Narrow(2, rnn_size+1, rnn_size)(sigmoid_chunk)
+	local forget_gate = nn.Narrow(2, 2*rnn_size + 1, rnn_size)(sigmoid_chunk)
+	local in_transform = nn.Tanh()(nn.Narrow(2,3*rnn_size + 1, rnn_size)(all_input_sums))
+
 	-- perform the LSTM update
-	local next_c           = nn.CAddTable()({
+	local next_c = nn.CAddTable()({
 	    nn.CMulTable()({forget_gate, prev_c}),
-	    nn.CMulTable()({in_gate,     in_transform})
+	    nn.CMulTable()({in_gate, in_transform})
 	  })
 	-- gated cells form the output
 	local next_h = nn.CMulTable()({out_gate, nn.Tanh()(next_c)})
