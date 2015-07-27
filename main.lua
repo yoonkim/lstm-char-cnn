@@ -15,11 +15,11 @@ require 'util.Squeeze'
 require 'util.Diag'
 require 'util.misc'
 
-
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
+HighwayMLP = require 'model.HighwayMLP'
 
 local stringx = require('pl.stringx')
 
@@ -34,7 +34,7 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/vali
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
-cmd:option('-use_pos', 0, 'use position-specific transformations (1=yes)')
+cmd:option('-highway_layers', 0, 'number of highway layers')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
 cmd:option('-feature_maps', '{25,50,125,125,150,150,150}', 'number of feature maps in the CNN')
@@ -122,7 +122,7 @@ if retrain then
 else
     protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
 				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.use_pos)
+				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers)
    -- training criterion (negative log likelihood)
    protos.criterion = nn.ClassNLLCriterion()
 end
