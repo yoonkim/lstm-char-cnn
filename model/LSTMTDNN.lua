@@ -8,7 +8,7 @@ else
 end
 
 function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size, char_vocab_size, char_vec_size,
-	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm, use_pos)
+	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm, highway_layers)
     -- rnn_size = dimensionality of hidden layers
     -- n = number of layers
     -- dropout = dropout probability
@@ -21,13 +21,14 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     -- length = max length of a word
     -- use_words = 1 if use word embeddings, otherwise not
     -- use_chars = 1 if use char embeddings, otherwise not
-    -- use_pos = 1 if have pos-specific transformations, otherwise not
+    -- highway_layers = number of highway layers to use, if any
 
     dropout = dropout or 0 
-
+    
     -- there will be 2*n+1 inputs if using words or chars, 
-    -- otherwise there will be 2*n + 2 inputs
+    -- otherwise there will be 2*n + 2 inputs   
     local char_vec_layer, word_vec_layer, x, input_size_L, word_vec, char_vec
+    local highway_layers = highway_layers or 0
     local length = length
     local inputs = {}
     if use_chars == 1 then
@@ -39,9 +40,6 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
         table.insert(inputs, nn.Identity()()) -- batch_size x 1 (word indices)
 	word_vec_layer = nn.LookupTable(word_vocab_size, word_vec_size)
 	word_vec_layer.name = 'word_vecs' -- change name so we can refer to it easily later
-    end
-    if use_pos == 1 then
-        pos_layer = nn.Diag(length, char_vec_size)
     end
     for L = 1,n do
       table.insert(inputs, nn.Identity()()) -- prev_c[L]
@@ -56,9 +54,6 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	if L == 1 then
 	    if use_chars == 1 then
 		char_vec = char_vec_layer(inputs[1])
-		if use_pos == 1 then
-		    char_vec = pos_layer(char_vec)
-		end 
 		local char_cnn = TDNN.tdnn(length, char_vec_size, feature_maps, kernels)
 		char_cnn.name = 'cnn' -- change name so we can refer to it later
 		local cnn_output = char_cnn(char_vec)
@@ -76,6 +71,11 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	    end
 	    if batch_norm == 1 then	
 	        x = nn.BatchNormalization(0)(x)
+	    end
+	    if highway_layers > 0 then
+	        local highway_mlp = HighwayMLP.mlp(input_size_L, highway_layers)
+		highway_mlp.name = 'highway'
+		x = highway_mlp(x)
 	    end
 	else 
 	    x = outputs[(L-1)*2] -- prev_h
