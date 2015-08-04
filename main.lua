@@ -12,7 +12,6 @@ require 'nngraph'
 require 'optim'
 require 'lfs'
 require 'util.Squeeze'
-require 'util.Diag'
 require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
@@ -34,17 +33,17 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/vali
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
-cmd:option('-highway_layers', 0, 'number of highway layers')
+cmd:option('-highway_layers', 1, 'number of highway layers')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 25, 'dimensionality of character embeddings')
-cmd:option('-feature_maps', '{25,50,125,125,150,150,150}', 'number of feature maps in the CNN')
+cmd:option('-feature_maps', '{50,100,150,200,200,200,200}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
-cmd:option('-learning_rate_decay',0.8,'learning rate decay')
-cmd:option('-learning_rate_decay_after',6,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-learning_rate_decay',0.5,'learning rate decay')
+cmd:option('-learning_rate_decay_after',2,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-param_init', 0.05, 'initialize parameters at')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 cmd:option('-seq_length',35,'number of timesteps to unroll for')
@@ -54,7 +53,7 @@ cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
-cmd:option('-print_every',50,'how many steps/minibatches between printing out the loss')
+cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv-ptb', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
@@ -320,16 +319,11 @@ for i = 1, iterations do
     if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
     train_losses[i] = train_loss
 
-    -- decay learning rate after epoch
-    if i % loader.split_sizes[1] == 0 and epoch >= opt.learning_rate_decay_after then        
-        lr = lr * opt.learning_rate_decay        
-    end    
-
     -- every now and then or on last iteration
     if i % opt.eval_val_every == 0 or i == iterations or i % loader.split_sizes[1] == 0 then
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
-        val_losses[i] = val_loss
+        val_losses[#val_losses+1] = val_loss
         local savefile = string.format('%s/lm_%s_epoch%.2f_%.2f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
         print('saving checkpoint to ' .. savefile)
         local checkpoint = {}
@@ -344,6 +338,13 @@ for i = 1, iterations do
 	checkpoint.lr = lr
         torch.save(savefile, checkpoint)
     end
+
+    -- decay learning rate after epoch
+    if i % loader.split_sizes[1] == 0 and epoch >= opt.learning_rate_decay_after then
+        if val_losses[#val_losses-1] - val_losses[#val_losses] < 1 then
+            lr = lr * opt.learning_rate_decay
+	end
+    end    
 
     if i % opt.print_every == 0 then
         print(string.format("%d/%d (epoch %.2f), train_loss = %6.4f, grad/param norm = %6.4e, time/batch = %.2fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
