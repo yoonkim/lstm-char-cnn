@@ -348,12 +348,17 @@ for i = 1, iterations do
     end    
 
     if i % opt.print_every == 0 then
-        print(string.format("%d/%d (epoch %.2f), train_loss = %6.4f, grad/param norm = %6.4e, time/batch = %.2fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
+        print(string.format("%d/%d (epoch %.2f), train_loss = %6.4f", i, iterations, epoch, train_loss))
     end   
     if i % 10 == 0 then collectgarbage() end
 end
 
---evaluate on full test set
+--evaluate on full test set. this just uses the model from the last epoch
+--rather than best-performing model. it is also incredibly inefficient
+--because of batch_size issues. for proper (and faster) evaluation, use evaluate.lua, i.e.
+--th evalulate.lua -model m
+--where m is the path to the best-performing model
+
 test_perp = eval_split(3)
 print('Perplexity on test set: ' .. test_perp)
 
