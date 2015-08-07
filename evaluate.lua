@@ -120,5 +120,5 @@ test_results.perp = total_perp
 test_results.token_loss = token_loss
 test_results.token_count = token_count
 test_results.vocab = {idx2word, word2idx, idx2char, char2idx}
-torch.save(savefile, test_results)
+torch.save(opt2.savefile, test_results)
 collectgarbage()
