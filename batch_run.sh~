@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=gpu_hl
+#SBATCH --output=slurm2.out
+#SBATCH --error=slurm2.err
+#SBATCH --partition=holyseasgpu
+#SBATCH --qos=short
+#SBATCH --exclusive
+#SBATCH --gres=gpu
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH -t 3-10:00
+#SBATCH --mem 12000
+#SBATCH --mail-type=END
+#SBATCH --mail-user=yhk255@nyu.edu
+
+th main.lua -highway_layers 2 -gpuid 0 -max_epochs 30 -savefile char-highway-3-500-0.5 -rnn_size 500 -highway_layers 3
