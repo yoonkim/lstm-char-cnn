@@ -34,6 +34,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
     if use_chars == 1 then
         table.insert(inputs, nn.Identity()()) -- batch_size x word length (char indices)
 	char_vec_layer = LookupTable(char_vocab_size, char_vec_size)
+	--char_vec_layer = nn.LookupTableOneHot(char_vocab_size)
 	char_vec_layer.name = 'char_vecs' -- change name so we can refer to it easily later
     end
     if use_words == 1 then

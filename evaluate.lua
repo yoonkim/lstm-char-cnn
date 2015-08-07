@@ -16,7 +16,8 @@ require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-TDNN = require 'model.AdaTDNN'
+HighwayMLP = require 'model.HighwayMLP'
+TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 
 local stringx = require('pl.stringx')
@@ -24,26 +25,26 @@ local stringx = require('pl.stringx')
 cmd = torch.CmdLine()
 cmd:text('Options')
 -- data
-cmd:option('-data_dir','data/tiger','data directory. Should contain train.txt/valid.txt/test.txt with input data')
--- model params
-cmd:option('-model', 'cv/lm_char-attend_epoch8.00_181.62.t7', 'model checkpoint file')
+cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
+cmd:option('-savefile', 'cv-ptb/lm_results.t7', 'save results to')
+cmd:option('-model', 'cv-ptb/lm_char-attend_epoch8.00_181.62.t7', 'model checkpoint file')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
 
+
 -- parse input params
 opt2 = cmd:parse(arg)
+if opt2.gpuid >= 0 then
+    print('using CUDA on GPU ' .. opt2.gpuid .. '...')
+    require 'cutorch'
+    require 'cunn'
+    cutorch.setDevice(opt2.gpuid + 1)
+end
 checkpoint = torch.load(opt2.model)
 opt = checkpoint.opt
 protos = checkpoint.protos
 idx2word, word2idx, idx2char, char2idx = table.unpack(checkpoint.vocab)
-
-if opt.gpuid >= 0 then
-    print('using CUDA on GPU ' .. opt.gpuid .. '...')
-    require 'cutorch'
-    require 'cunn'
-    cutorch.setDevice(opt.gpuid + 1)
-end
 
 -- recreate the data loader class, with batchsize = 1
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
@@ -53,7 +54,7 @@ print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loade
 -- the initial state of the cell/hidden states
 init_state = {}
 for L=1,opt.num_layers do
-    local h_init = torch.zeros(1, opt.rnn_size)
+    local h_init = torch.zeros(2, opt.rnn_size)
     if opt.gpuid >=0 then h_init = h_init:cuda() end
     table.insert(init_state, h_init:clone())
     table.insert(init_state, h_init:clone())
@@ -67,19 +68,15 @@ if opt.gpuid >= 0 then
     for k,v in pairs(protos) do v:cuda() end
 end
 
--- put the above things into one flattened parameters tensor
-params, grad_params = model_utils.combine_all_parameters(protos.rnn)
-
--- initialization
-params:uniform(-0.05, 0.05) -- small numbers uniform
-
-print('number of parameters in the model: ' .. params:nElement())
-
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
     local u = {}
-    if opt.use_chars == 1 then table.insert(u, x_char[{{},t}]) end
-    if opt.use_words == 1 then table.insert(u, x[{{},t}]) end
+    if opt.use_chars == 1 then 
+        table.insert(u, x_char[{{1,2},t}])
+    end
+    if opt.use_words == 1 then 
+        table.insert(u, x[{{1,2},t}]) 
+    end
     for i = 1, #prev_states do table.insert(u, prev_states[i]) end
     return u
 end
@@ -94,13 +91,18 @@ function eval_split_full(split_idx)
     local token_loss = torch.zeros(#idx2word)
     local rnn_state = {[0] = init_state}    
     local x, y, x_char = loader:next_batch(split_idx)
+    if opt.gpuid >= 0 then
+        x = x:float():cuda()
+	y = y:float():cuda()
+	x_char = x_char:float():cuda()
+    end
     protos.rnn:evaluate() 
     for t = 1, x:size(2) do
 	local lst = protos.rnn:forward(get_input(x, x_char, t, rnn_state[0]))
 	rnn_state[0] = {}
 	for i=1,#init_state do table.insert(rnn_state[0], lst[i]) end
 	prediction = lst[#lst] 
-	local singleton_loss = protos.criterion:forward(prediction, y[{{},t}])
+	local singleton_loss = protos.criterion:forward(prediction, y[{{1,2},t}])
 	loss = loss + singleton_loss
 	local token_idx = x[1][t]
 	token_count[token_idx] = token_count[token_idx] + 1
@@ -111,4 +113,12 @@ function eval_split_full(split_idx)
     return total_perp, token_loss, token_count
 end
 
+total_perp, token_loss, token_count = eval_split_full(3)
+print(total_perp)
+test_results = {}
+test_results.perp = total_perp
+test_results.token_loss = token_loss
+test_results.token_count = token_count
+test_results.vocab = {idx2word, word2idx, idx2char, char2idx}
+torch.save(savefile, test_results)
 collectgarbage()
