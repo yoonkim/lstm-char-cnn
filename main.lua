@@ -13,6 +13,7 @@ require 'optim'
 require 'lfs'
 require 'util.Squeeze'
 require 'util.misc'
+require 'util.LookupTableOneHot'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
@@ -183,7 +184,7 @@ function get_input(x, x_char, t, prev_states)
 end
 
 -- evaluate the loss over an entire split
-function eval_split(split_idx, max_batches, full_eval)
+function eval_split(split_idx, max_batches)
     print('evaluating loss over split index ' .. split_idx)
     local n = loader.split_sizes[split_idx]
     if max_batches ~= nil then n = math.min(max_batches, n) end
@@ -194,7 +195,7 @@ function eval_split(split_idx, max_batches, full_eval)
     local unk_perp = 0
     local unk_count = 0
     local rnn_state = {[0] = init_state}    
-    if full_eval==nil then -- batch eval        
+    if split_idx<=2 then -- batch eval        
 	for i = 1,n do -- iterate over batches in the split
 	    -- fetch a batch
 	    local x, y, x_char = loader:next_batch(split_idx)
@@ -352,4 +353,7 @@ for i = 1, iterations do
     if i % 10 == 0 then collectgarbage() end
 end
 
+--evaluate on full test set
+test_perp = eval_split(3)
+print('Perplexity on test set: ' .. test_perp)
 
