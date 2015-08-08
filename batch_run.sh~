@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=highway-2-50
+#SBATCH --output=highway-2-650-15-t2-lr-0.7.out
+#SBATCH --error=highway-2-650-15-t2-lr-0.7.err
+#SBATCH --partition=holyseasgpu
+#SBATCH --qos=short
+#SBATCH --exclusive
+#SBATCH --gres=gpu
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH -t 4-10:00
+#SBATCH --mem 12000
+#SBATCH --mail-type=END
+#SBATCH --mail-user=yhk255@nyu.edu
+
+th main.lua -gpuid 0 -max_epochs 30 -savefile char-highway-2-650-15-thresh2 -rnn_size 650 -highway_layers 2 -char_vec_size 15 -decay_when 2 -learning_rate_decay 0.7 
