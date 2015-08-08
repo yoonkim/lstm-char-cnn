@@ -44,12 +44,12 @@ cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
 -- optimization
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.5,'learning rate decay')
-cmd:option('-learning_rate_decay_after',2,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-decay_when',1,'decay if validation perplexity does not improve by more than this much')
 cmd:option('-param_init', 0.05, 'initialize parameters at')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',40,'number of full passes through the training data')
+cmd:option('-max_epochs',30,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
@@ -84,7 +84,6 @@ end
 
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
---opt.padding = torch.Tensor(opt.kernels):max()-1 -- padding is max kernel size minus one
 loadstring('opt.feature_maps = ' .. opt.feature_maps)() -- get feature map sizes
 assert(#opt.kernels == #opt.feature_maps, '#kernels has to equal #feature maps')
 opt.padding = 0 
@@ -221,6 +220,12 @@ function eval_split(split_idx, max_batches)
 	loss = loss / opt.seq_length / n
     else -- full eval on test set
         local x, y, x_char = loader:next_batch(split_idx)
+	if opt.gpuid >= 0 then -- ship the input arrays to GPU
+	    -- have to convert to float because integers can't be cuda()'d
+	    x = x:float():cuda()
+	    y = y:float():cuda()
+	    x_char = x_char:float():cuda()
+	end
 	protos.rnn:evaluate() -- just need one clone
 	for t = 1, x:size(2) do
 	    local lst = protos.rnn:forward(get_input(x, x_char, t, rnn_state[0]))
@@ -341,8 +346,8 @@ for i = 1, iterations do
     end
 
     -- decay learning rate after epoch
-    if i % loader.split_sizes[1] == 0 and epoch >= opt.learning_rate_decay_after then
-        if val_losses[#val_losses-1] - val_losses[#val_losses] < 1 then
+    if i % loader.split_sizes[1] == 0 and #val_losses > 2 then
+        if val_losses[#val_losses-1] - val_losses[#val_losses] < opt.decay_when then
             lr = lr * opt.learning_rate_decay
 	end
     end    
@@ -355,8 +360,8 @@ end
 
 --evaluate on full test set. this just uses the model from the last epoch
 --rather than best-performing model. it is also incredibly inefficient
---because of batch_size issues. for proper (and faster) evaluation, use evaluate.lua, i.e.
---th evalulate.lua -model m
+--because of batch size issues. for faster evaluation, use evaluate.lua, i.e.
+--th evaluate.lua -model m
 --where m is the path to the best-performing model
 
 test_perp = eval_split(3)
