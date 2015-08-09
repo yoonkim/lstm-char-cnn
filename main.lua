@@ -90,7 +90,7 @@ opt.padding = 0
 
 -- global constants for certain tokens
 opt.tokens = {}
-opt.tokens.EOS = '+' -- <eos> (end of sentence) token
+opt.tokens.EOS = '+' -- <eos> (end of sentence) token -- for non-ptb, this should be ' '
 opt.tokens.UNK = '|' -- unk word token
 opt.tokens.START = '{' -- start-of-word token
 opt.tokens.END = '}' -- end-of-word token
@@ -190,9 +190,6 @@ function eval_split(split_idx, max_batches)
 
     loader:reset_batch_pointer(split_idx) -- move batch iteration pointer for this split to front
     local loss = 0
-    local total_unk_perp = 0
-    local unk_perp = 0
-    local unk_count = 0
     local rnn_state = {[0] = init_state}    
     if split_idx<=2 then -- batch eval        
 	for i = 1,n do -- iterate over batches in the split
@@ -234,17 +231,12 @@ function eval_split(split_idx, max_batches)
 	    prediction = lst[#lst] 
 	    local tok_perp = protos.criterion:forward(prediction, y[{{},t}])
 	    loss = loss + tok_perp
-	    if x[1][t] == loader.word2idx['|'] then -- count perplexity for <unk> contexts
-	        unk_perp = unk_perp + tok_perp
-		unk_count = unk_count + 1
 	    end
-	    print(t .. '/' .. unk_perp .. '/' .. unk_count .. '/' .. loss)
 	end
-	total_unk_perp = torch.exp(unk_perp / unk_count)
 	loss = loss / x:size(2)
     end    
     local perp = torch.exp(loss)    
-    return perp, total_unk_perp
+    return perp
 end
 
 -- do fwd/bwd and return loss, grad_params
