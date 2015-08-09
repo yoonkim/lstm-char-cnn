@@ -297,7 +297,7 @@ function feval(x)
 	grad_params:mul(shrink_factor)
     end    
     params:add(grad_params:mul(-lr)) -- update params
-    return loss
+    return torch.exp(loss)
 end
 
 -- start optimization here
