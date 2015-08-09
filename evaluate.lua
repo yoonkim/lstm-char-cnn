@@ -44,6 +44,10 @@ end
 checkpoint = torch.load(opt2.model)
 opt = checkpoint.opt
 protos = checkpoint.protos
+print('opt: ')
+print(opt)
+print('val_losses: ')
+print(opt.val_losses)
 idx2word, word2idx, idx2char, char2idx = table.unpack(checkpoint.vocab)
 
 -- recreate the data loader class, with batchsize = 1
@@ -110,7 +114,7 @@ function eval_split_full(split_idx)
     end
     loss = loss / x:size(2)
     local total_perp = torch.exp(loss)    
-    return total_perp, token_loss, token_count
+    return total_perp:float(), token_loss:float(), token_count:float()
 end
 
 total_perp, token_loss, token_count = eval_split_full(3)
