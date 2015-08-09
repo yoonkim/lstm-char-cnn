@@ -231,7 +231,6 @@ function eval_split(split_idx, max_batches)
 	    prediction = lst[#lst] 
 	    local tok_perp = protos.criterion:forward(prediction, y[{{},t}])
 	    loss = loss + tok_perp
-	    end
 	end
 	loss = loss / x:size(2)
     end    
