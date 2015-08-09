@@ -72,6 +72,10 @@ if opt.gpuid >= 0 then
     for k,v in pairs(protos) do v:cuda() end
 end
 
+params, grad_params = model_utils.combine_all_parameters(protos.rnn)
+
+print('number of parameters in the model: ' .. params:nElement())
+
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
     local u = {}
@@ -114,7 +118,7 @@ function eval_split_full(split_idx)
     end
     loss = loss / x:size(2)
     local total_perp = torch.exp(loss)    
-    return total_perp:float(), token_loss:float(), token_count:float()
+    return total_perp, token_loss:float(), token_count:float()
 end
 
 total_perp, token_loss, token_count = eval_split_full(3)
@@ -124,5 +128,6 @@ test_results.perp = total_perp
 test_results.token_loss = token_loss
 test_results.token_count = token_count
 test_results.vocab = {idx2word, word2idx, idx2char, char2idx}
+test_results.opt = opt
 torch.save(opt2.savefile, test_results)
 collectgarbage()
