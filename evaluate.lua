@@ -47,7 +47,7 @@ protos = checkpoint.protos
 print('opt: ')
 print(opt)
 print('val_losses: ')
-print(opt.val_losses)
+print(checkpoint.val_losses)
 idx2word, word2idx, idx2char, char2idx = table.unpack(checkpoint.vocab)
 
 -- recreate the data loader class, with batchsize = 1
@@ -129,5 +129,6 @@ test_results.token_loss = token_loss
 test_results.token_count = token_count
 test_results.vocab = {idx2word, word2idx, idx2char, char2idx}
 test_results.opt = opt
+test_results.val_losses = checkpoint.val_losses
 torch.save(opt2.savefile, test_results)
 collectgarbage()
