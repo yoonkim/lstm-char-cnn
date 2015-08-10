@@ -1,0 +1,16 @@
+[?1034h[0musing CUDA on GPU 0...[0m	
+[0mloading data files...[0m	
+[0mWord vocab size: 10000, Char vocab size: 51[0m	
+[0mreshaping tensors...[0m	
+[0mdata load done. Number of batches in train: 1327, val: 105, test: 1[0m	
+[0mWord vocab size: 10000, Char vocab size: 51, Max word length (incl. padding): [0m	[0;36m19[0m	
+[0mcreating an LSTM-CNN with 2 layers[0m	
+[0mnumber of parameters in the model: 53556765[0m	
+[0mcloning rnn[0m	
+[0mcloning criterion[0m	
+[0m100/39810 (epoch 0.08), train_loss = 3684.2669[0m	
+[0m200/39810 (epoch 0.15), train_loss = 3838.5624[0m	
+[0m300/39810 (epoch 0.23), train_loss = 8722.6406[0m	
+[0m400/39810 (epoch 0.30), train_loss = 1738.1996[0m	
+[0m500/39810 (epoch 0.38), train_loss = 3122.3110[0m	
+[0m600/39810 (epoch 0.45), train_loss = 1906.9949[0m	

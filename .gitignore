@@ -2,3 +2,5 @@
 *.sh
 *.out
 *.err
+*.txt
+*.zip
