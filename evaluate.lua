@@ -27,7 +27,7 @@ cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
 cmd:option('-savefile', 'cv-ptb/lm_results.t7', 'save results to')
-cmd:option('-model', 'cv-ptb/lm_char-attend_epoch8.00_181.62.t7', 'model checkpoint file')
+cmd:option('-model', 'cv-ptb/lm_model.t7', 'model checkpoint file')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
