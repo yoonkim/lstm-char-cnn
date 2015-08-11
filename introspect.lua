@@ -12,6 +12,8 @@ require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
+
+HighwayMLP = require 'model.HighwayMLP'
 TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 
@@ -23,7 +25,7 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','cv/lm_char_epoch16.00_159.74.t7', 'model file')
+cmd:option('-model','model.t7', 'model file')
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
 
