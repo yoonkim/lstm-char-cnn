@@ -49,16 +49,16 @@ cmd:option('-param_init', 0.05, 'initialize parameters at')
 cmd:option('-batch_norm', 0, 'use batch normalization over input embeddings (1=yes)')
 cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',30,'number of full passes through the training data')
+cmd:option('-max_epochs',25,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
-cmd:option('-eval_val_every',300000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv-ptb', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
+cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
@@ -90,7 +90,7 @@ opt.padding = 0
 
 -- global constants for certain tokens
 opt.tokens = {}
-opt.tokens.EOS = '+' -- <eos> (end of sentence) token -- for non-ptb, this should be ' '
+opt.tokens.EOS = opt.EOS
 opt.tokens.UNK = '|' -- unk word token
 opt.tokens.START = '{' -- start-of-word token
 opt.tokens.END = '}' -- end-of-word token
@@ -317,7 +317,7 @@ for i = 1, iterations do
     train_losses[i] = train_loss
 
     -- every now and then or on last iteration
-    if i % opt.eval_val_every == 0 or i == iterations or i % loader.split_sizes[1] == 0 then
+    if i % i == iterations or i % loader.split_sizes[1] == 0 then
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
         val_losses[#val_losses+1] = val_loss
