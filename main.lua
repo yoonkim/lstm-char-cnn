@@ -13,7 +13,6 @@ require 'optim'
 require 'lfs'
 require 'util.Squeeze'
 require 'util.misc'
-require 'util.LookupTableOneHot'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
