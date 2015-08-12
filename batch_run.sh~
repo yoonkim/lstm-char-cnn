@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=la-small
+#SBATCH --output=la-small.out
+#SBATCH --error=la-small.err
+#SBATCH --partition=holyseasgpu
+#SBATCH --qos=short
+#SBATCH --exclusive
+#SBATCH --gres=gpu
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH -t 3-20:00
+#SBATCH --mem 24000
+#SBATCH --mail-type=END
+#SBATCH --mail-user=yhk255@nyu.edu
+
+th main.lua -gpuid 0 -data_dir data/la -checkpoint_dir cv-la -savefile char-small -rnn_size 300 -highway_layers 1 -kernels '{1,2,3,4,5,6}' -feature_maps '{25,50,75,100,125,150}' -EOS ''
