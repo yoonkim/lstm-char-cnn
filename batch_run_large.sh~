@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=la-large
+#SBATCH --output=la-large.out
+#SBATCH --error=la-large.err
+#SBATCH --partition=holyseasgpu
+#SBATCH --qos=short
+#SBATCH --exclusive
+#SBATCH --gres=gpu
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH -t 6-20:00
+#SBATCH --mem 24000
+#SBATCH --mail-type=END
+#SBATCH --mail-user=yhk255@nyu.edu
+
+th main.lua -gpuid 0 -data_dir data/la -checkpoint_dir cv-la -savefile char-large -EOS ''
