@@ -96,7 +96,7 @@ opt.tokens.END = '}' -- end-of-word token
 opt.tokens.ZEROPAD = ' ' -- zero-pad token 
 
 -- create the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding)
+loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, 50)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
 opt.max_word_l = loader.max_word_l

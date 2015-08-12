@@ -33,15 +33,14 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     self.vocab_size = #self.idx2word
     print(string.format('Word vocab size: %d, Char vocab size: %d', #self.idx2word, #self.idx2char))
     -- create word-char mappings
-    if max_word_l == nil then -- if max word length is not specified
-	self.max_word_l = 0
-	for i = 1, #self.idx2word do
-	    self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) -- get max word length 
-	end
-    else
-        self.max_word_l = max_word_l
+    self.max_word_l = 0
+    for i = 1, #self.idx2word do
+	self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) -- get max word length 
     end
     self.max_word_l = self.max_word_l + 2*self.padding -- pad at start and end
+    if self.max_word_l ~= nil then
+        self.max_word_l = math.min(self.max_word_l, max_word_l)
+    end
     -- cut off the end for train/valid sets so that it divides evenly
     -- test set is not cut off
     self.batch_size = batch_size
