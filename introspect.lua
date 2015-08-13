@@ -27,10 +27,19 @@ cmd:text('Options')
 -- data
 cmd:option('-model','model.t7', 'model file')
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-savefile', 'chargrams.tsv', 'save max chargrams to')
 cmd:text()
 
 -- parse input params
 opt2 = cmd:parse(arg)
+
+if opt2.gpuid >= 0 then
+    print('using CUDA on GPU ' .. opt2.gpuid .. '...')
+    require 'cutorch'
+    require 'cunn'
+    cutorch.setDevice(opt2.gpuid + 1)
+end
+
 
 -- load model
 checkpoint = torch.load(opt2.model)
@@ -39,12 +48,6 @@ torch.manualSeed(opt.seed)
 protos = checkpoint.protos
 idx2word, word2idx, idx2char, char2idx = table.unpack(checkpoint.vocab)
 
-if opt.gpuid >= 0 then
-    print('using CUDA on GPU ' .. opt.gpuid .. '...')
-    require 'cutorch'
-    require 'cunn'
-    cutorch.setDevice(opt.gpuid + 1)
-end
 
 function word2char2idx(word)
     local char_idx = torch.zeros(opt.max_word_l)
@@ -70,6 +73,8 @@ function get_layer(layer)
 	    char_vecs = layer
 	elseif layer.name == 'cnn' then
 	    cnn = layer
+	elseif layer.name == 'highway' then
+	    highway = layer
 	end
     end
 end 
@@ -126,6 +131,12 @@ for u,v in pairs(result) do
     for i = 1, max_arg:size(1) do -- for each feature map
         local chargram = v[2][max_arg[i]][i]
 	local word = idx2word[max_arg[i]]
-	max_chargrams[i] = {word, chargram, max_val[i]}
+	max_chargrams[#max_chargrams + 1] = {u, chargram, word, max_val[i]}
     end
 end
+
+f = io.open(opt2.savefile, 'w')
+for u,v in ipairs(max_chargrams) do
+    f:write(v[1]..'\t'..v[2]..'\t'..v[3]..'\t'..v[4]..'\n')
+end
+f:close()
