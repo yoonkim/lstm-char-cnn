@@ -140,3 +140,44 @@ for u,v in ipairs(max_chargrams) do
     f:write(v[1]..'\t'..v[2]..'\t'..v[3]..'\t'..v[4]..'\n')
 end
 f:close()
+
+
+function get_all_chargrams(idx2word)
+    local idx2chargram = {}
+    local chargram2idx = {}
+    for i = 1, #idx2word do
+        local ngrams = get_chargrams(opt.tokens.START .. word .. opt.token.END, 1, 7)
+	for _, ngram in pairs(ngrams) do
+	    if chargram2idx[ngram] == nil then
+	        idx2chargram[#idx2chargram + 1] = ngram
+		chargram2idx[ngram] = #idx2chargram
+	    end
+	end
+    end
+    return idx2chargram, chargram2idx
+end
+
+function get_chargrams(word, low, high)
+    local ngrams = {}
+    local word_len = word:len()
+    local high = math.min(high, word_len)
+    for i = low, high do
+        get_chargram(word, word_len, i, ngrams)
+    end
+    return ngrams
+end
+
+function get_chargram(word, word_len, n, ngrams)
+    for i = 1, word_len-n+1 do
+        local ngram = word:sub(i, i+n-1)
+	ngrams[#ngrams + 1] = ngram
+    end
+end
+
+idx2chargram, chargram2idx = get_all_chargrams(idx2word)
+
+chargram_idx_all = torch.zeros(#idx2chargram, opt.max_word_l)
+for i = 1, #idx2chargram do
+    chargram_idx_all[i] = word2char2idx(idx2chargram[i], opt.max_word_l)
+end
+chargram_vecs_all = cnn:forward(char_vecs:forward(chargram_idx_all))
