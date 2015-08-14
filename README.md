@@ -1,4 +1,5 @@
 # word-char-rnn
+code is messy/experimental. cleaner code and paper upcoming
 
 large-char (this is the default: should get ~82 on dev and ~79 on test)
 
