@@ -25,8 +25,8 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','cv-ptb/model.t7', 'model file')
-cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-model','final-results/en-large-model.t7', 'model file')
+cmd:option('-gpuid',0,'which gpu to use. -1 = use CPU')
 cmd:option('-savefile', 'chargrams.tsv', 'save max chargrams to')
 cmd:text()
 
@@ -81,10 +81,11 @@ end
 protos.rnn:apply(get_layer)
 
 -- get conv filter layers
-conv_filters = {}
-cnn:apply(function (x) if x.name ~= nil then if x.name:sub(1,4)=='conv' then 
-			  table.insert(conv_filters, x) end end end)
-
+if cnn ~= nil then
+   conv_filters = {}
+   cnn:apply(function (x) if x.name ~= nil then if x.name:sub(1,4)=='conv' then 
+			     table.insert(conv_filters, x) end end end)
+end
 -- for each word get the feature map values as well
 -- as the chargrams that activate the feature map (i.e. max)
 function get_max_chargrams()
@@ -190,10 +191,12 @@ end
 
 --get contribution of each character to the feature vector by counting
 function get_contribution()
-    local result ={}
+    result ={}
+    result2 = {}
     local char_idx_all = torch.zeros(#idx2word, opt.max_word_l)
     for i = 1, #idx2word do
         char_idx_all[i] = word2char2idx(opt.tokens.START .. idx2word[i] .. opt.tokens.END)
+	result2[i] = {}
     end
     local result = torch.zeros(char_idx_all:size())
     local char_vecs_all = char_vecs:forward(char_idx_all)
@@ -207,13 +210,84 @@ function get_contribution()
 	for j = 1, #idx2word do
 	    local chargrams = {}
 	    for k = 1, max_arg:size(2) do
+	        local c = {}
 		local start_char = max_arg[j][k]
 		local end_char = max_arg[j][k] + width - 1
 		for l = start_char, end_char do	
 		    result[j][l] = result[j][l] + 1
+		    table.insert(c, idx2char[char_idx_all[j][l]])
+		end
+		if result2[j][c] == nil then
+		    result2[j][c] = 1
+		else
+		    result2[j][c] = result2[j][c] + 1
 		end
 	    end
 	end
     end
-    return result
+end
+
+function get_nn(words, k)
+    local k = k or 5
+    if opt.use_chars==1 then
+        word_vecs_idx = torch.zeros(#idx2word, opt.max_word_l)
+        for i = 1, #idx2word do
+	    word_vecs_idx[i] = word2char2idx(opt.tokens.START .. idx2word[i] .. opt.tokens.END, opt.max_word_l)
+        end
+	if opt.gpuid >= 0 then
+	    word_vecs_idx = word_vecs_idx:float():cuda()
+	end
+	if word_vecs_trained == nil then
+	    word_vecs_trained = cnn:forward(char_vecs:forward(word_vecs_idx))
+	    word_vecs_trained = highway:forward(word_vecs_trained)
+	end
+	collectgarbage()
+    else
+        word_vecs_trained = word_vecs.weight
+    end
+    -- normalize 
+    word_vecs_trained = word_vecs_trained:float()
+    word_vecs_trained = normalize(word_vecs_trained)
+    for i = 1, #words do
+        local word = words[i]
+	if word2idx[word] == nil then
+	    new_word = torch.zeros(2, opt.max_word_l)
+	    new_word[1] = word2char2idx(opt.tokens.START .. word .. opt.tokens.END, opt.max_word_l)
+	    new_word[2] = torch.ones(opt.max_word_l)
+	    if opt.gpuid >= 0 then
+	        new_word = new_word:float():cuda()
+	    end
+	    new_word = cnn:forward(char_vecs:forward(new_word))
+	    new_word = highway:forward(new_word)
+	    new_word = new_word[1] / torch.norm(new_word[1])
+	    new_word = new_word:double()
+	    print('----new word----')
+        else
+	    new_word = word_vecs_trained[word2idx[word]]
+	end
+        r = get_sim_words(word_vecs_trained, new_word, k)	
+        print('----'..word..'----')
+    	for j = 1, k do
+	    print(string.format('%s, %.4f', r[j][1], r[j][2]))
+	end
+    end       
+end
+
+function normalize(m)
+    local m_norm = torch.zeros(m:size())    
+    for i = 1, m:size(1) do
+        m_norm[i] = m[i] / torch.norm(m[i])
+    end
+    return m_norm
+end
+
+function get_sim_words(m, w, k)
+    local k = k or 5
+    local sim = torch.mv(m, w)
+    sim, idx = torch.sort(-sim)
+    local r = {}
+    for i = 1, k do
+        r[i] = {idx2word[idx[i]], -sim[i]}
+    end
+    return r
 end
