@@ -18,7 +18,7 @@ th main.lua -gpuid 0 -savefile word-large -word_vec_size 650 -highway_layers 0 -
 
 small-word (should get ~101 on dev and ~98 on test)
 
-th main.lua -gpuid 0 -savefile word-small -word_vec_size 200 -highway_layers 0 use_chars 0 -use_words 1 -rnn_size 200
+th main.lua -gpuid 0 -savefile word-small -word_vec_size 200 -highway_layers 0 -use_chars 0 -use_words 1 -rnn_size 200
 
 
 
