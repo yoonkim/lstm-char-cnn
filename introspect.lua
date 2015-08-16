@@ -25,7 +25,7 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','model.t7', 'model file')
+cmd:option('-model','cv-ptb/model.t7', 'model file')
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:option('-savefile', 'chargrams.tsv', 'save max chargrams to')
 cmd:text()
@@ -122,31 +122,34 @@ function get_max_chargrams()
     return result
 end
 
-result = get_max_chargrams()
-max_chargrams = {}
-for u,v in pairs(result) do
-    local max_val, max_arg = torch.max(v[1],1)
-    max_val = max_val:squeeze()
-    max_arg = max_arg:squeeze()
-    for i = 1, max_arg:size(1) do -- for each feature map
-        local chargram = v[2][max_arg[i]][i]
-	local word = idx2word[max_arg[i]]
-	max_chargrams[#max_chargrams + 1] = {u, chargram, word, max_val[i]}
+-- get max chargrams and print them out to file
+function print_max_chargrams()
+    result = get_max_chargrams()
+    max_chargrams = {}
+    for u,v in pairs(result) do
+	local max_val, max_arg = torch.max(v[1],1)
+	max_val = max_val:squeeze()
+	max_arg = max_arg:squeeze()
+	for i = 1, max_arg:size(1) do 
+	    local chargram = v[2][max_arg[i]][i]
+	    local word = idx2word[max_arg[i]]
+	    max_chargrams[#max_chargrams + 1] = {u, chargram, word, max_val[i]}
+	end
     end
+
+    local f = io.open(opt2.savefile, 'w')
+    for u,v in ipairs(max_chargrams) do
+	f:write(v[1]..'\t'..v[2]..'\t'..v[3]..'\t'..v[4]..'\n')
+    end
+    f:close()
 end
 
-f = io.open(opt2.savefile, 'w')
-for u,v in ipairs(max_chargrams) do
-    f:write(v[1]..'\t'..v[2]..'\t'..v[3]..'\t'..v[4]..'\n')
-end
-f:close()
-
-
+-- get all character ngrams that occur in the corpus, and represent them as vectors
 function get_all_chargrams(idx2word)
     local idx2chargram = {}
     local chargram2idx = {}
     for i = 1, #idx2word do
-        local ngrams = get_chargrams(opt.tokens.START .. word .. opt.token.END, 1, 7)
+        local ngrams = get_chargrams(opt.tokens.START .. idx2word[i] .. opt.tokens.END, 2, 7)
 	for _, ngram in pairs(ngrams) do
 	    if chargram2idx[ngram] == nil then
 	        idx2chargram[#idx2chargram + 1] = ngram
@@ -174,10 +177,43 @@ function get_chargram(word, word_len, n, ngrams)
     end
 end
 
-idx2chargram, chargram2idx = get_all_chargrams(idx2word)
-
-chargram_idx_all = torch.zeros(#idx2chargram, opt.max_word_l)
-for i = 1, #idx2chargram do
-    chargram_idx_all[i] = word2char2idx(idx2chargram[i], opt.max_word_l)
+function get_chargram_vecs()
+    idx2chargram, chargram2idx = get_all_chargrams(idx2word)
+    chargram_idx_all = torch.zeros(#idx2chargram, opt.max_word_l)
+    for i = 1, #idx2chargram do
+	chargram_idx_all[i] = word2char2idx(idx2chargram[i], opt.max_word_l)
+    end
+    chargram_vecs_all = cnn:forward(char_vecs:forward(chargram_idx_all))
+    
+    return chargram_vecs_all
 end
-chargram_vecs_all = cnn:forward(char_vecs:forward(chargram_idx_all))
+
+--get contribution of each character to the feature vector by counting
+function get_contribution()
+    local result ={}
+    local char_idx_all = torch.zeros(#idx2word, opt.max_word_l)
+    for i = 1, #idx2word do
+        char_idx_all[i] = word2char2idx(opt.tokens.START .. idx2word[i] .. opt.tokens.END)
+    end
+    local result = torch.zeros(char_idx_all:size())
+    local char_vecs_all = char_vecs:forward(char_idx_all)
+    for i = 1, #conv_filters do
+        local conv_filter = conv_filters[i]
+	local width = conv_filter.kW
+	local conv_output = conv_filter:forward(char_vecs_all)
+	max_val, max_arg = torch.max(conv_output, 2)
+	max_val = max_val:squeeze()
+	max_arg = max_arg:squeeze()
+	for j = 1, #idx2word do
+	    local chargrams = {}
+	    for k = 1, max_arg:size(2) do
+		local start_char = max_arg[j][k]
+		local end_char = max_arg[j][k] + width - 1
+		for l = start_char, end_char do	
+		    result[j][l] = result[j][l] + 1
+		end
+	    end
+	end
+    end
+    return result
+end
