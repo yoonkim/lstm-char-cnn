@@ -50,6 +50,7 @@ cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',25,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
+cmd:option('-max_word_l',50,'maximum word length')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
@@ -60,6 +61,7 @@ cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid c
 cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-time', 0, 'print batch times')
 cmd:text()
 
 -- parse input params
@@ -84,7 +86,7 @@ end
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
 loadstring('opt.feature_maps = ' .. opt.feature_maps)() -- get feature map sizes
-assert(#opt.kernels == #opt.feature_maps, '#kernels has to equal #feature maps')
+
 opt.padding = 0 
 
 -- global constants for certain tokens
@@ -96,7 +98,7 @@ opt.tokens.END = '}' -- end-of-word token
 opt.tokens.ZEROPAD = ' ' -- zero-pad token 
 
 -- create the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, 50)
+loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
 opt.max_word_l = loader.max_word_l
@@ -121,8 +123,8 @@ else
     protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
 				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
 				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers)
-   -- training criterion (negative log likelihood)
-   protos.criterion = nn.ClassNLLCriterion()
+    -- training criterion (negative log likelihood)
+    protos.criterion = nn.ClassNLLCriterion()
 end
 
 -- the initial state of the cell/hidden states
@@ -288,7 +290,7 @@ function feval(x)
     ------------------------ misc ----------------------
     -- transfer final state to initial state (BPTT)
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
-
+    
     -- renormalize gradients
     local grad_norm = grad_params:norm()
     if grad_norm > opt.max_grad_norm then
@@ -346,7 +348,16 @@ for i = 1, iterations do
         print(string.format("%d/%d (epoch %.2f), train_loss = %6.4f", i, iterations, epoch, train_loss))
     end   
     if i % 10 == 0 then collectgarbage() end
+    if opt.time ~= 0 then
+       print("Batch Time:", timer:time().real - time)
+    end
 end
+
+some_function()
+another_function()
+coroutine.resume( some_coroutine )
+ProFi:stop()
+ProFi:writeReport( 'MyProfilingReport.txt' )
 
 --evaluate on full test set. this just uses the model from the last epoch
 --rather than best-performing model. it is also incredibly inefficient
