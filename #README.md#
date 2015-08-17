@@ -5,8 +5,17 @@ embeddings to use as inputs into an long short-term memory (LSTM)
 recurrent neural network language model (RNNLM).
 
 Note: Code is messy/experimental. Cleaner (and faster) code coming. Paper 
-will be posted on arXiv soon
+will be posted on arXiv soon.
 
+Much of the code is from Andrej Karpathy's implementation, which is available at
+https://github.com/karpathy/char-rnn
+
+## Requirements
+Code runs on Lua/Torch. Will require the `nngraph' and `optim' packages to be
+be installed via the following commands
+
+```
+luarocks install optim 
 large-char (this is the default: should get ~82 on dev and ~79 on test)
 
 th main.lua -gpuid 0 -savefile char-large
