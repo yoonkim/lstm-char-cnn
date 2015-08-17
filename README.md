@@ -1,8 +1,8 @@
 ## Neural Language Modeling with Characters
 A neural language model (NLM) built on character inputs only. 
-The model employs a convolutional neural network (CNN) over character
-embeddings to use as inputs into an long short-term memory (LSTM)
-recurrent neural network language model (RNNLM). Also optionally
+The model employs a convolutional neural network (CNN) over characters 
+to use as inputs into an long short-term memory (LSTM)
+recurrent neural network language model (RNN-LM). Also optionally
 passes the output from the CNN through a [Highway Network](http://arxiv.org/abs/1507.06228), 
 which improves performance.
 
@@ -11,6 +11,12 @@ will be posted on arXiv very soon.
 
 Much of the base code is from Andrej Karpathy's excellent character RNN implementation,
 available at https://github.com/karpathy/char-rnn
+
+Also, the repo name 'word-char-rnn' is bit of a misnomer, as the primary motivation
+is to use character-level inputs only. But as a baseline we implemented the
+word-level models (and also experimented with models whereby the input
+is a concatenation of the word embedding and the output from a character CNN),
+hence the name.
 
 ### Requirements
 Code is written in Lua and requires Torch. It additionally requires
@@ -36,7 +42,7 @@ Treebank data (Tomas Mikolov's pre-processed version with vocab size equal to 10
 widely used by the language modeling community) is given as the default.
 
 ### Model
-Here are some example scripts. Add `-gpuid 0` to use a GPU (which is
+Here are some example scripts. Add `-gpuid 0` to each line to use a GPU (which is
 required to get any reasonable speed with the CNN)
 
 Large character-level model (`LSTM-CharCNN-Large` in the paper).
