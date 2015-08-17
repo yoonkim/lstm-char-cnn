@@ -61,7 +61,7 @@ cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid c
 cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
-cmd:option('-time', 0, 'print batch times')
+cmd:option('-time', 1, 'print batch times')
 cmd:text()
 
 -- parse input params
