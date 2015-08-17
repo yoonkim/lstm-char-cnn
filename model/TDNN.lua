@@ -23,7 +23,9 @@ function TDNN.tdnn(length, input_size, feature_maps, kernels)
           local conv = nn.TemporalConvolution(input_size, feature_maps[i], kernels[i])
           local conv_layer = conv(input)
           conv.name = 'conv_filter_' .. kernels[i] .. '_' .. feature_maps[i]
-          pool_layer = nn.Max(2)(nn.Tanh()(conv_layer))    
+          --pool_layer = nn.Max(2)(nn.Tanh()(conv_layer))    
+	  pool_layer = nn.TemporalMaxPooling(reduced_l)(nn.Tanh()(conv_layer))
+	  pool_layer = nn.Squeeze()(pool_layer)
        else
           -- Use CuDNN for temporal convolution.
           if not cudnn then require 'cudnn' end
