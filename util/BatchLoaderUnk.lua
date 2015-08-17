@@ -33,14 +33,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     self.vocab_size = #self.idx2word
     print(string.format('Word vocab size: %d, Char vocab size: %d', #self.idx2word, #self.idx2char))
     -- create word-char mappings
-    self.max_word_l = 0
-    for i = 1, #self.idx2word do
-	self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) -- get max word length 
-    end
-    self.max_word_l = self.max_word_l + 2*self.padding -- pad at start and end
-    if self.max_word_l ~= nil then
-        self.max_word_l = math.min(self.max_word_l, max_word_l)
-    end
+    self.max_word_l = all_data_char[1]:size(2)
     -- cut off the end for train/valid sets so that it divides evenly
     -- test set is not cut off
     self.batch_size = batch_size
@@ -117,6 +110,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
     local output_tensors = {} -- output tensors for train/val/test
     local output_chars = {} -- output character for train/val/test sets (not tensors yet)
     local vocab_count = {} -- vocab count 
+    local max_word_l_tmp = 0
     local idx2word = {tokens.UNK} -- unknown word token
     local word2idx = {}; word2idx[tokens.UNK] = 1
     local idx2char = {tokens.ZEROPAD, tokens.START, tokens.END} -- zero-pad, start-of-word, end-of-word tokens
@@ -128,23 +122,23 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
        -- First count all the words in the string.
        local counts = 0
        for line in f:lines() do
-          line = stringx.replace(line, '<unk>', tokens.UNK)
-
+          line = stringx.replace(line, '<unk>', tokens.UNK) -- replace unk with a single character
           for word in line:gmatch'([^%s]+)' do
              counts = counts + 1
+	     max_word_l_tmp = math.max(max_word_l_tmp, word:len())
           end
           counts = counts + 1
        end
        f:close()
+       
+       -- if actual max word length is less than the limit, use that
+       max_word_l = math.min(max_word_l_tmp, max_word_l)
 
        -- Next preallocate the tensors we will need.
        -- Watch out the second one needs a lot of RAM.
        output_tensors[split] = torch.LongTensor(counts)
-       output_chars[split] = torch.LongTensor(counts, max_word_l):ones()
-
-       -- Next preallocate the tensors we will need.
-       -- Watch out the second one needs a lot of RAM.
-
+       output_chars[split] = torch.ones(counts, max_word_l):long()
+       print(output_chars[split]:size(2))
        f = io.open(input_files[split], 'r')
        local word_num = 0
        for line in f:lines() do
@@ -181,7 +175,9 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
              end
              append(rword)
           end
-          append("+")
+	  if tokens.EOS ~= '' then
+              append(tokens.EOS)
+	  end
        end
     end
     print "done"
