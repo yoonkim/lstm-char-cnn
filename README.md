@@ -2,12 +2,14 @@
 A neural language model (NLM) built on character inputs only. 
 The model employs a convolutional neural network (CNN) over character
 embeddings to use as inputs into an long short-term memory (LSTM)
-recurrent neural network language model (RNNLM).
+recurrent neural network language model (RNNLM). Also optionally
+passes the output from the CNN through a [Highway Network](http://arxiv.org/abs/1507.06228), 
+which improves performance.
 
 Note: Code is messy/experimental. Cleaner (and faster) code coming. Paper 
-will be posted on arXiv soon
+will be posted on arXiv very soon.
 
-Most of the code is from Andrej Karpathy's character RNN implementation,
+Much of the base code is from Andrej Karpathy's excellent character RNN implementation,
 available at https://github.com/karpathy/char-rnn
 
 ### Requirements
@@ -23,12 +25,14 @@ luarocks install cutorch
 luarocks install cunn
 ```
 
+`cudnn` also will result in a good (10x) speed-up.
+
 ### Data
-Data should be put into the `data/` directory, split into train.txt,
-valid.txt, and test.txt
+Data should be put into the `data/` directory, split into `train.txt`,
+`valid.txt`, and `test.txt`
 
 Each line of the .txt file should be a sentence. The English Penn 
-Treebank data (Tomas Mikolov's pre-processed version with 10K vocab,
+Treebank data (Tomas Mikolov's pre-processed version with vocab size equal to 10K,
 widely used by the language modeling community) is given as the default.
 
 ### Model
@@ -41,18 +45,26 @@ th main.lua -gpuid 0 -savefile char-large
 
 LSTM-CharCNN-Small (should get ~96 on dev and ~93 on test)
 ```
-th main.lua -gpuid 0 -savefile char-small -rnn_size 300 -highway_layers 1 -kernels '{1,2,3,4,5,6}' -feature_maps '{25,50,75,100,125,150}'
+th main.lua -gpuid 0 -savefile char-small -rnn_size 300 -highway_layers 1 
+-kernels '{1,2,3,4,5,6}' -feature_maps '{25,50,75,100,125,150}'
 ```
 
 LSTM-Word-Large (should get ~89 on dev and ~85 on test)
 ```
-th main.lua -gpuid 0 -savefile word-large -word_vec_size 650 -highway_layers 0 -use_chars 0 -use_words 1
+th main.lua -gpuid 0 -savefile word-large -word_vec_size 650 -highway_layers 0 
+-use_chars 0 -use_words 1
 ```
 
 LSTM-Word-Small (should get ~101 on dev and ~98 on test)
 ```
-th main.lua -gpuid 0 -savefile word-small -word_vec_size 200 -highway_layers 0 -use_chars 0 -use_words 1 -rnn_size 200
+th main.lua -gpuid 0 -savefile word-small -word_vec_size 200 -highway_layers 0 
+-use_chars 0 -use_words 1 -rnn_size 200
 ```
+
+Note that if `-use_chars` and `-use_words` is both set to 1, the model
+will concatenate the output from the CNN with the word embedding. We've
+found this model to underperform a purely character-level model, though.
+
 ### Licence
 MIT
 
