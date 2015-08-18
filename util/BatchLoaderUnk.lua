@@ -22,7 +22,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     -- construct a tensor with all the data
     if not (path.exists(vocab_file) or path.exists(tensor_file) or path.exists(char_file)) then
         print('one-time setup: preprocessing input train/valid/test files in dir: ' .. data_dir)
-        BatchLoaderUnk.text_to_tensor(input_files, vocab_file, tensor_file, char_file)
+        BatchLoaderUnk.text_to_tensor(input_files, vocab_file, tensor_file, char_file, max_word_l)
     end
 
     print('loading data files...')
@@ -33,14 +33,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     self.vocab_size = #self.idx2word
     print(string.format('Word vocab size: %d, Char vocab size: %d', #self.idx2word, #self.idx2char))
     -- create word-char mappings
-    self.max_word_l = 0
-    for i = 1, #self.idx2word do
-	self.max_word_l = math.max(self.max_word_l, self.idx2word[i]:len()) -- get max word length 
-    end
-    self.max_word_l = self.max_word_l + 2*self.padding -- pad at start and end
-    if self.max_word_l ~= nil then
-        self.max_word_l = math.min(self.max_word_l, max_word_l)
-    end
+    self.max_word_l = all_data_char[1]:size(2)
     -- cut off the end for train/valid sets so that it divides evenly
     -- test set is not cut off
     self.batch_size = batch_size
@@ -50,33 +43,33 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     print('reshaping tensors...')  
     local x_batches, y_batches, nbatches
     for split, data in ipairs(all_data) do
-    	local len = data:size(1)
-	if len % (batch_size * seq_length) ~= 0 and split < 3 then
-	    data = data:sub(1, batch_size * seq_length * math.floor(len / (batch_size * seq_length)))
-	end
-	local ydata = data:clone()
-	ydata:sub(1,-2):copy(data:sub(2,-1))
-	ydata[-1] = data[1]
-	local data_char = torch.zeros(data:size(1), self.max_word_l):long()
-	for i = 1, data:size(1) do
-	    data_char[i] = self:expand(all_data_char[split][i])
-	end
-	if split < 3 then
-	    x_batches = data:view(batch_size, -1):split(seq_length, 2)
-	    y_batches = ydata:view(batch_size, -1):split(seq_length, 2)
-	    x_char_batches = data_char:view(batch_size, -1, self.max_word_l):split(seq_length,2)
-	    nbatches = #x_batches	   
-	    self.split_sizes[split] = nbatches
-	    assert(#x_batches == #y_batches)
-	    assert(#x_batches == #x_char_batches)
-	else --for test we repeat dimensions to batch size (easier but inefficient evaluation)
-	    x_batches = {data:resize(1, data:size(1)):expand(batch_size, data:size(2))}
-	    y_batches = {ydata:resize(1, ydata:size(1)):expand(batch_size, ydata:size(2))}
-	    data_char = data_char:resize(1, data_char:size(1), data_char:size(2))
-	    x_char_batches = {data_char:expand(batch_size, data_char:size(2), data_char:size(3))}
-	    self.split_sizes[split] = 1	
-	end
-  	self.all_batches[split] = {x_batches, y_batches, x_char_batches}
+       local len = data:size(1)
+       if len % (batch_size * seq_length) ~= 0 and split < 3 then
+          data = data:sub(1, batch_size * seq_length * math.floor(len / (batch_size * seq_length)))
+       end
+       local ydata = data:clone()
+       ydata:sub(1,-2):copy(data:sub(2,-1))
+       ydata[-1] = data[1]
+       local data_char = torch.zeros(data:size(1), self.max_word_l):long()
+       for i = 1, data:size(1) do
+          data_char[i] = self:expand(all_data_char[split][i]:totable())
+       end
+       if split < 3 then
+          x_batches = data:view(batch_size, -1):split(seq_length, 2)
+          y_batches = ydata:view(batch_size, -1):split(seq_length, 2)
+          x_char_batches = data_char:view(batch_size, -1, self.max_word_l):split(seq_length,2)
+          nbatches = #x_batches	   
+          self.split_sizes[split] = nbatches
+          assert(#x_batches == #y_batches)
+          assert(#x_batches == #x_char_batches)
+       else --for test we repeat dimensions to batch size (easier but inefficient evaluation)
+          x_batches = {data:resize(1, data:size(1)):expand(batch_size, data:size(2))}
+          y_batches = {ydata:resize(1, ydata:size(1)):expand(batch_size, ydata:size(2))}
+          data_char = data_char:resize(1, data_char:size(1), data_char:size(2))
+          x_char_batches = {data_char:expand(batch_size, data_char:size(2), data_char:size(3))}
+          self.split_sizes[split] = 1	
+       end
+       self.all_batches[split] = {x_batches, y_batches, x_char_batches}
     end
     self.batch_idx = {0,0,0}
     print(string.format('data load done. Number of batches in train: %d, val: %d, test: %d', self.split_sizes[1], self.split_sizes[2], self.split_sizes[3]))
@@ -84,7 +77,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     return self
 end
 
-function BatchLoaderUnk:expand(t)
+function BatchLoaderUnk:expand(t)    
     for i = 1, self.padding do
         table.insert(t, 1, 1) -- 1 is always char idx for zero pad
     end
@@ -110,53 +103,100 @@ function BatchLoaderUnk:next_batch(split_idx)
     return self.all_batches[split_idx][1][idx], self.all_batches[split_idx][2][idx], self.all_batches[split_idx][3][idx]
 end
 
-function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfile, out_charfile)
+function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfile, out_charfile, max_word_l)
     print('Processing text into tensors...')
     local tokens = opt.tokens -- inherit global constants for tokens
-    local f, rawdata, output, output_char
+    local f, rawdata
     local output_tensors = {} -- output tensors for train/val/test
-    local output_chars = {} -- output character for train/val/test sets (not tensors yet)
+    local output_chars = {} -- output character tensors for train/val/test sets
     local vocab_count = {} -- vocab count 
+    local max_word_l_tmp = 0 -- max word length of the corpus
     local idx2word = {tokens.UNK} -- unknown word token
     local word2idx = {}; word2idx[tokens.UNK] = 1
     local idx2char = {tokens.ZEROPAD, tokens.START, tokens.END} -- zero-pad, start-of-word, end-of-word tokens
     local char2idx = {}; char2idx[tokens.ZEROPAD] = 1; char2idx[tokens.START] = 2; char2idx[tokens.END] = 3
-    for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)
-        output = {}
-	output_char = {}
-        f = torch.DiskFile(input_files[split])
-	rawdata = f:readString('*a') -- read all data at once
-	f:close()
-	rawdata = stringx.replace(rawdata, '\n', ' ' .. tokens.EOS .. ' ') 
-	rawdata = stringx.replace(rawdata, tokens.START, ' ') 
-	rawdata = stringx.replace(rawdata, tokens.END, ' ') 
-	rawdata = stringx.replace(rawdata, '<unk>', tokens.UNK) 
-	for word in rawdata:gmatch'([^%s]+)' do
-	    local chars = {char2idx[tokens.START]} -- start-of-word symbol
-	    if string.sub(word,1,1) == tokens.UNK and word:len() > 1 then -- unk token with character info available
-	        word = string.sub(word, 3)
-		output[#output + 1] = word2idx[tokens.UNK]
-	    else
-		if word2idx[word]==nil then
-		    idx2word[#idx2word + 1] = word -- create word-idx/idx-word mappings
-		    word2idx[word] = #idx2word
-		end
-		output[#output + 1] = word2idx[word]		
-	    end
-	    for char in word:gmatch'.' do
-		if char2idx[char]==nil then
-		    idx2char[#idx2char + 1] = char -- create char-idx/idx-char mappings
-		    char2idx[char] = #idx2char
-		end
-		chars[#chars + 1] = char2idx[char]
-	    end
-	    chars[#chars + 1] = char2idx[tokens.END] -- end-of-word symbol
-	    output_char[#output_char + 1] = chars
-	end
-	output_tensors[split] = torch.LongTensor(output)
-	output_chars[split] = output_char
-    end
+    local split_counts = {}
 
+    -- first go through train/valid/test to get max word length
+    -- if actual max word length (e.g. 19 for PTB) is smaller than specified
+    -- we use that instead. this is inefficient, but only a one-off thing so should be fine
+    -- also counts the number of tokens
+    for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)
+       f = io.open(input_files[split], 'r')       
+       local counts = 0
+       for line in f:lines() do
+          line = stringx.replace(line, '<unk>', tokens.UNK) -- replace unk with a single character
+	  line = stringx.replace(line, tokens.START, '') --start-of-word token is reserved
+	  line = stringx.replace(line, tokens.END, '') --end-of-word token is reserved
+          for word in line:gmatch'([^%s]+)' do
+	     max_word_l_tmp = math.max(max_word_l_tmp, word:len())
+	     counts = counts + 1
+          end
+	  if tokens.EOS ~= '' then
+	      counts = counts + 1 --PTB uses \n for <eos>, so need to add one more token at the end
+	  end
+       end
+       f:close()
+       split_counts[split] = counts
+    end
+      
+    print('After first pass of data, max word length is: ' .. max_word_l_tmp)
+    print(string.format('Token count: train %d, val %d, test %d', 
+    			split_counts[1], split_counts[2], split_counts[3]))
+
+    -- if actual max word length is less than the limit, use that
+    max_word_l = math.min(max_word_l_tmp, max_word_l)
+   
+    for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)     
+       -- Preallocate the tensors we will need.
+       -- Watch out the second one needs a lot of RAM.
+       output_tensors[split] = torch.LongTensor(split_counts[split])
+       output_chars[split] = torch.ones(split_counts[split], max_word_l):long()
+
+       f = io.open(input_files[split], 'r')
+       local word_num = 0
+       for line in f:lines() do
+          line = stringx.replace(line, '<unk>', tokens.UNK)
+	  line = stringx.replace(line, tokens.START, '') -- start and end of word tokens are reserved
+	  line = stringx.replace(line, tokens.END, '')
+          for rword in line:gmatch'([^%s]+)' do
+             function append(word)
+                word_num = word_num + 1
+                -- Collect garbage.
+                if word_num % 10000 == 0 then
+                   collectgarbage()
+                end
+                local chars = {char2idx[tokens.START]} -- start-of-word symbol
+                if string.sub(word,1,1) == tokens.UNK and word:len() > 1 then -- unk token with character info available
+                   word = string.sub(word, 3)
+                   output_tensors[split][word_num] = word2idx[tokens.UNK]
+                else
+                   if word2idx[word]==nil then
+                      idx2word[#idx2word + 1] = word -- create word-idx/idx-word mappings
+                      word2idx[word] = #idx2word
+                   end
+                   output_tensors[split][word_num] = word2idx[word]
+                end
+                for char in word:gmatch'.' do
+                   if char2idx[char]==nil then
+                      idx2char[#idx2char + 1] = char -- create char-idx/idx-char mappings
+                      char2idx[char] = #idx2char
+                   end
+                   chars[#chars + 1] = char2idx[char]
+                end
+                chars[#chars + 1] = char2idx[tokens.END] -- end-of-word symbol
+                for i = 1, math.min(#chars, max_word_l) do
+                   output_chars[split][word_num][i] = chars[i]
+                end
+             end
+             append(rword)
+          end
+	  if tokens.EOS ~= '' then --PTB does not have <eos> so we add a character for <eos> tokens
+              append(tokens.EOS)   --other datasets don't need this
+	  end
+       end
+    end
+    print "done"
     -- save output preprocessed files
     print('saving ' .. out_vocabfile)
     torch.save(out_vocabfile, {idx2word, word2idx, idx2char, char2idx})
