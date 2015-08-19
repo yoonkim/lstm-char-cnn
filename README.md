@@ -25,7 +25,7 @@ the `nngraph` and `optim` packages, which can be installed via:
 luarocks install nngraph
 luarocks install optim
 ```
-GPU usage will additionally require:
+GPU usage will additionally require `cutorch` and `cunn` packages:
 ```
 luarocks install cutorch
 luarocks install cunn
@@ -67,13 +67,13 @@ th main.lua -savefile char-small -rnn_size 300 -highway_layers 1
 ```
 
 #### Word-level models
-Large word-level model (`LSTM-Word-Large` in the paper).
+Large word-level model (LSTM-Word-Large in the paper).
 This should get ~89 on valid and ~85 on test.
 ```
 th main.lua -savefile word-large -word_vec_size 650 -highway_layers 0 
 -use_chars 0 -use_words 1
 ```
-Small word-level model (`LSTM-Word-Small` in the paper).
+Small word-level model (LSTM-Word-Small in the paper).
 This should get ~101 on valid and ~98 on test.
 ```
 th main.lua -savefile word-small -word_vec_size 200 -highway_layers 0 
