@@ -16,9 +16,6 @@ require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.LSTMTDNN'
-HighwayMLP = require 'model.HighwayMLP'
 
 local stringx = require('pl.stringx')
 
@@ -61,6 +58,7 @@ cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid c
 cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-cudnn', 0,'use cudnn (1=yes). this should greatly speed up convolutions')
 cmd:option('-time', 0, 'print batch times')
 cmd:text()
 
@@ -82,6 +80,17 @@ if opt.gpuid >= 0 then
     require 'cunn'
     cutorch.setDevice(opt.gpuid + 1)
 end
+
+if opt.cudnn == 1 then
+   assert(opt.gpuid >= 0, 'GPU must be used if using cudnn')
+   print('using cudnn...')
+   require 'cudnn'
+end
+
+-- load models
+TDNN = require 'model.TDNN'
+LSTMTDNN = require 'model.LSTMTDNN'
+HighwayMLP = require 'model.HighwayMLP'
 
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
