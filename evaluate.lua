@@ -26,8 +26,8 @@ cmd = torch.CmdLine()
 cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
-cmd:option('-savefile', 'cv-ptb/lm_results.t7', 'save results to')
-cmd:option('-model', 'cv-ptb/lm_model.t7', 'model checkpoint file')
+cmd:option('-savefile', 'final-results/lm_results.t7', 'save results to')
+cmd:option('-model', 'final-results/en-large-word-model.t7', 'model checkpoint file')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
