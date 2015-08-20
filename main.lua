@@ -31,9 +31,11 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/vali
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
+cmd:option('-use_morpho', 0, 'use explicit morphemes (B&B baseline) (1=yes)')
 cmd:option('-highway_layers', 2, 'number of highway layers')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 15, 'dimensionality of character embeddings')
+cmd:option('-morpho_vec_size', 100, 'dimensionality of morpho embeddings')
 cmd:option('-feature_maps', '{50,100,150,200,200,200,200}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
@@ -67,9 +69,9 @@ cmd:text()
 opt = cmd:parse(arg)
 torch.manualSeed(opt.seed)
 
-assert(opt.use_words == 1 or opt.use_words == 0, '-use_words has to be 0 or 1')
-assert(opt.use_chars == 1 or opt.use_chars == 0, '-use_chars has to be 0 or 1')
-assert((opt.use_chars + opt.use_words) > 0, 'has to use at least one of words or chars')
+assert(opt.use_words == 1 or opt.use_words == 0 or opt.use_morpho == 1, '-use_words has to be 0 or 1')
+assert(opt.use_chars == 1 or opt.use_chars == 0 or opt.use_morpho == 1, '-use_chars has to be 0 or 1')
+assert((opt.use_chars + opt.use_words + opt.use_morpho) > 0, 'has to use at least one of words or chars')
 
 --if opt.threads > 0 then
 --    torch.setnumthreads(opt.threads)
@@ -109,7 +111,7 @@ opt.tokens.END = '}' -- end-of-word token
 opt.tokens.ZEROPAD = ' ' -- zero-pad token 
 
 -- create the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
+loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l, 5, opt.use_morpho)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
 opt.max_word_l = loader.max_word_l
@@ -128,12 +130,16 @@ end
 protos = {}
 print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
 
+
 if retrain then
     protos = checkpoint.protos
 else
     protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
-				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers)
+				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, 
+                #loader.idx2morpho, opt.morpho_vec_size, 
+                opt.feature_maps, 
+				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.use_morpho, 
+                opt.batch_norm, opt.highway_layers)
     -- training criterion (negative log likelihood)
     protos.criterion = nn.ClassNLLCriterion()
 end
@@ -188,8 +194,9 @@ end
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
     local u = {}
-    if opt.use_chars == 1 then table.insert(u, x_char[{{},t}]) end
+    if opt.use_chars == 1 or opt.use_morpho then table.insert(u, x_char[{{},t}]) end
     if opt.use_words == 1 then table.insert(u, x[{{},t}]) end
+
     for i = 1, #prev_states do table.insert(u, prev_states[i]) end
     return u
 end
@@ -237,6 +244,7 @@ function eval_split(split_idx, max_batches)
 	end
 	protos.rnn:evaluate() -- just need one clone
 	for t = 1, x:size(2) do
+
 	    local lst = protos.rnn:forward(get_input(x, x_char, t, rnn_state[0]))
 	    rnn_state[0] = {}
 	    for i=1,#init_state do table.insert(rnn_state[0], lst[i]) end
@@ -272,6 +280,7 @@ function feval(x)
     local loss = 0
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
+        --print(get_input(x, x_char, t, rnn_state[t-1])[1])
         local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
         rnn_state[t] = {}
         for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
@@ -286,10 +295,10 @@ function feval(x)
         -- backprop through loss, and softmax/linear
         local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
         table.insert(drnn_state[t], doutput_t)
-	table.insert(rnn_state[t-1], drnn_state[t])
+        table.insert(rnn_state[t-1], drnn_state[t])
         local dlst = clones.rnn[t]:backward(get_input(x, x_char, t, rnn_state[t-1]), drnn_state[t])
         drnn_state[t-1] = {}
-	local tmp = opt.use_words + opt.use_chars -- not the safest way but quick
+        local tmp = opt.use_words + opt.use_chars + opt.use_morpho -- not the safest way but quick
         for k,v in pairs(dlst) do
             if k > tmp then -- k == 1 is gradient on x, which we dont need
                 -- note we do k-1 because first item is dembeddings, and then follow the 
