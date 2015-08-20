@@ -24,8 +24,6 @@ luarocks install cutorch
 luarocks install cunn
 ```
 
-`cudnn` also will result in a good (10x) speed-up.
-
 `cudnn` will result in a good (8x-10x) speed-up for convolutions, so it is
 highly recommended. This will make the training time of a character-level model 
 be somewhat competitive against a word-level model (0.5 secs/batch vs 0.25 secs/batch for 
@@ -89,7 +87,6 @@ th main.lua -savefile word-small -word_vec_size 200 -highway_layers 0
 ```
 
 #### Combining both
->>>>>>> c4faf308ba29d3fcb8f52a48d88fe07d93399059
 Note that if `-use_chars` and `-use_words` are both set to 1, the model
 will concatenate the output from the CNN with the word embedding. We've
 found this model to underperform a purely character-level model, though.
