@@ -16,9 +16,6 @@ require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-HighwayMLP = require 'model.HighwayMLP'
-TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.LSTMTDNN'
 
 local stringx = require('pl.stringx')
 
@@ -32,7 +29,6 @@ cmd:option('-model', 'final-results/en-large-word-model.t7', 'model checkpoint f
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
 
-
 -- parse input params
 opt2 = cmd:parse(arg)
 if opt2.gpuid >= 0 then
@@ -41,6 +37,17 @@ if opt2.gpuid >= 0 then
     require 'cunn'
     cutorch.setDevice(opt2.gpuid + 1)
 end
+
+if opt.cudnn == 1 then
+    assert(opt2.gpuid >= 0, 'GPU must be used if using cudnn')
+    print('using cudnn')
+    require 'cudnn'
+end
+
+HighwayMLP = require 'model.HighwayMLP'
+TDNN = require 'model.TDNN'
+LSTMTDNN = require 'model.LSTMTDNN'
+
 checkpoint = torch.load(opt2.model)
 opt = checkpoint.opt
 protos = checkpoint.protos
