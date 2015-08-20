@@ -1,5 +1,5 @@
 import sys, os
-# out = open("/tmp/words", 'w')
+out = open("/tmp/words", 'w')
 
 data_dir = sys.argv[1]
 morfessor_dir = sys.argv[2]
