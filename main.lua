@@ -1,5 +1,6 @@
 --[[
-Trains a word+character-level multi-layer rnn language model
+Trains a word-level or character-level (for inputs) lstm language model
+Predictions are still made at the word-level.
 
 Much of the code is borrowed from the following implementations
 https://github.com/karpathy/char-rnn
@@ -87,7 +88,8 @@ if opt.cudnn == 1 then
    require 'cudnn'
 end
 
--- load models
+-- load models. we do this here instead of before
+-- because of cudnn
 TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 HighwayMLP = require 'model.HighwayMLP'
@@ -361,12 +363,6 @@ for i = 1, iterations do
        print("Batch Time:", timer:time().real - time)
     end
 end
-
-some_function()
-another_function()
-coroutine.resume( some_coroutine )
-ProFi:stop()
-ProFi:writeReport( 'MyProfilingReport.txt' )
 
 --evaluate on full test set. this just uses the model from the last epoch
 --rather than best-performing model. it is also incredibly inefficient

@@ -42,17 +42,17 @@ Treebank (PTB) data (Tomas Mikolov's pre-processed version with vocab size equal
 widely used by the language modeling community) is given as the default.
 
 The paper also runs the models on non-English data (Czech, French, German, Russian, and Spanish), from the ICML 2014
-paper [Compositional Morphology for Word Representations and Language Modelling](http://jlmr.org/proceedings/papers/v32/botha14.pdf)
+paper [Compositional Morphology for Word Representations and Language Modelling](http://arxiv.org/abs/1405.4273)
 by Jan Botha and Phil Blunsom. This can be downloaded from [Jan's website](https://bothameister.github.io).
 
-#### Note about the PTB
-The PTB data above does not have <EOS> tokens for each sentence, and hence these must be
+#### Note on PTB
+The PTB data above does not have end-of-sentence tokens for each sentence, and hence these must be
 manually appended. This can be done by adding `-EOS '+'` to the script (obviously you 
-can use other characters than `+` to represent an <EOS> token---we recommend a single
+can use other characters than `+` to represent an end-of-sentence token---we recommend a single
 unused character).
 
-Jan's datasets already have <EOS> tokens for each line so you do not need to 
-add the `-EOS` command (equivalent to adding `-EOS ''`).
+Jan's datasets already have end-of-sentence tokens for each line so you do not need to 
+add the `-EOS` command (equivalent to adding `-EOS ''`, which is the default).
 
 ### Model
 Here are some example scripts. Add `-gpuid 0` to each line to use a GPU (which is
@@ -83,7 +83,7 @@ Small word-level model (LSTM-Word-Small in the paper).
 This should get ~101 on valid and ~98 on test.
 ```
 th main.lua -savefile word-small -word_vec_size 200 -highway_layers 0 
--use_chars 0 -use_words 1 -rnn_size 200 -EOS '+"
+-use_chars 0 -use_words 1 -rnn_size 200 -EOS '+'
 ```
 
 #### Combining both
