@@ -1,5 +1,6 @@
 --[[
-Trains a word+character-level multi-layer rnn language model
+Trains a word-level or character-level (for inputs) lstm language model
+Predictions are still made at the word-level.
 
 Much of the code is borrowed from the following implementations
 https://github.com/karpathy/char-rnn
@@ -16,9 +17,6 @@ require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
-TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.LSTMTDNN'
-HighwayMLP = require 'model.HighwayMLP'
 
 local stringx = require('pl.stringx')
 
@@ -55,12 +53,13 @@ cmd:option('-threads', 16, 'number of threads')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
-cmd:option('-checkpoint_dir', 'cv-ptb', 'output directory where checkpoints get written')
+cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
-cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
+cmd:option('-EOS', '', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-cudnn', 0,'use cudnn (1=yes). this should greatly speed up convolutions')
 cmd:option('-time', 0, 'print batch times')
 cmd:text()
 
@@ -82,6 +81,18 @@ if opt.gpuid >= 0 then
     require 'cunn'
     cutorch.setDevice(opt.gpuid + 1)
 end
+
+if opt.cudnn == 1 then
+   assert(opt.gpuid >= 0, 'GPU must be used if using cudnn')
+   print('using cudnn...')
+   require 'cudnn'
+end
+
+-- load models. we do this here instead of before
+-- because of cudnn
+TDNN = require 'model.TDNN'
+LSTMTDNN = require 'model.LSTMTDNN'
+HighwayMLP = require 'model.HighwayMLP'
 
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
@@ -352,12 +363,6 @@ for i = 1, iterations do
        print("Batch Time:", timer:time().real - time)
     end
 end
-
-some_function()
-another_function()
-coroutine.resume( some_coroutine )
-ProFi:stop()
-ProFi:writeReport( 'MyProfilingReport.txt' )
 
 --evaluate on full test set. this just uses the model from the last epoch
 --rather than best-performing model. it is also incredibly inefficient
