@@ -44,7 +44,7 @@ widely used by the language modeling community) is given as the default.
 The paper also runs the models on non-English data (Czech, French, German, Russian, and Spanish), from the ICML 2014
 paper [Compositional Morphology for Word Representations and Language Modelling](http://arxiv.org/abs/1405.4273)
 by Jan Botha and Phil Blunsom. This can be downloaded from [Jan's website](https://bothameister.github.io).
-We also provide a script to download them and save in the relevant folders (see `get_data.sh').
+We also provide a script to download them and save in the relevant folders (see `get_data.sh`).
 
 #### Note on PTB
 The PTB data above does not have end-of-sentence tokens for each sentence, and hence these must be
