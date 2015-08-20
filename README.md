@@ -92,6 +92,19 @@ Note that if `-use_chars` and `-use_words` are both set to 1, the model
 will concatenate the output from the CNN with the word embedding. We've
 found this model to underperform a purely character-level model, though.
 
+### Evaluation
+By default `main.lua` will evaluate the model on test data after training,
+but this will use the last epoch's model, and also will be slow due to
+the way the data is set up.
+
+Evaluation on test can be performed via the following script:
+```
+th evaluate.lua -model model_file.t7 -data_dir data/ptb -savefile model_results.t7
+```
+Where `model_file.t7` is the path to the best performing (on validation) model.
+This will also save some basic statistics (e.g. perplexity by token) in
+`model_results.t7`.
+
 ### Licence
 MIT
 
