@@ -25,7 +25,7 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','final-results/en-large-model.t7', 'model file')
+cmd:option('-model','final-results/en-large-word-model.t7', 'model file')
 cmd:option('-gpuid',0,'which gpu to use. -1 = use CPU')
 cmd:option('-savefile', 'chargrams.tsv', 'save max chargrams to')
 cmd:text()
@@ -256,7 +256,7 @@ function get_nn(words, k)
 	end
 	if word_vecs_trained == nil then
 	    word_vecs_trained = cnn:forward(char_vecs:forward(word_vecs_idx))
-	    --word_vecs_trained = highway:forward(word_vecs_trained)
+	    word_vecs_trained = highway:forward(word_vecs_trained)
 	end
 	collectgarbage()
     else
@@ -275,7 +275,7 @@ function get_nn(words, k)
 	        new_word = new_word:float():cuda()
 	    end
 	    new_word = cnn:forward(char_vecs:forward(new_word))
-	    --new_word = highway:forward(new_word)
+	    new_word = highway:forward(new_word)
 	    new_word = new_word[1] / torch.norm(new_word[1])
 	    new_word = new_word:double()
 	    print('----new word----')
