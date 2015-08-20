@@ -25,7 +25,7 @@ cmd:text('Perform model introspection')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-model','final-results/en-large-model.t7', 'model file')
+cmd:option('-model','final-results/en-large-word-model.t7', 'model file')
 cmd:option('-gpuid',0,'which gpu to use. -1 = use CPU')
 cmd:option('-savefile', 'chargrams.tsv', 'save max chargrams to')
 cmd:text()
@@ -149,13 +149,21 @@ end
 function get_all_chargrams(idx2word)
     local idx2chargram = {}
     local chargram2idx = {}
+    local count = {}
     for i = 1, #idx2word do
         local ngrams = get_chargrams(opt.tokens.START .. idx2word[i] .. opt.tokens.END, 2, 7)
 	for _, ngram in pairs(ngrams) do
-	    if chargram2idx[ngram] == nil then
-	        idx2chargram[#idx2chargram + 1] = ngram
-		chargram2idx[ngram] = #idx2chargram
+	    if count[ngram] == nil then
+	        count[ngram] = 1
+	    else
+	        count[ngram] = count[ngram] + 1	     
 	    end
+	end
+    end
+    for ngram, c in pairs(count) do
+        if c > 3 then
+	    idx2chargram[#idx2chargram + 1] = ngram
+	    chargram2idx[ngram] = #idx2chargram	    
 	end
     end
     return idx2chargram, chargram2idx
@@ -178,15 +186,24 @@ function get_chargram(word, word_len, n, ngrams)
     end
 end
 
-function get_chargram_vecs()
+function get_chargram_vecs(savefile)
     idx2chargram, chargram2idx = get_all_chargrams(idx2word)
+    print(#idx2chargram)
     chargram_idx_all = torch.zeros(#idx2chargram, opt.max_word_l)
     for i = 1, #idx2chargram do
 	chargram_idx_all[i] = word2char2idx(idx2chargram[i], opt.max_word_l)
     end
-    chargram_vecs_all = cnn:forward(char_vecs:forward(chargram_idx_all))
-    
-    return chargram_vecs_all
+    chargram_vecs_all = char_vecs:forward(chargram_idx_all)
+    chargram_vecs = torch.zeros(#idx2chargram, torch.sum(torch.Tensor(opt.feature_maps)))
+    for i = 1, #idx2chargram do
+        chargram_vecs[i] = cnn:forward(chargram_vecs_all[i]:view(1, opt.max_word_l, opt.char_vec_size)):float()
+    end
+    local f = io.open(savefile..'-dic.txt', 'w')
+    for _, ngram in ipairs(idx2chargram) do
+        f:write(ngram..'\n')
+    end
+    f:close()
+    torch.save(savefile..'.t7',  chargram_vecs)
 end
 
 --get contribution of each character to the feature vector by counting
