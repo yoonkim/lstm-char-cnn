@@ -6,9 +6,9 @@ local BatchLoaderUnk = {}
 local stringx = require('pl.stringx')
 BatchLoaderUnk.__index = BatchLoaderUnk
 
-max_factor_l = 5
 
-function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_word_l)
+
+function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_word_l, max_factor_l, use_morpho)
     local self = {}
     setmetatable(self, BatchLoaderUnk)
 
@@ -23,20 +23,21 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     local char_file = path.join(data_dir, 'data_char.t7')
     local out_morpho_file = path.join(data_dir, 'morpho.t7')
 
+
     -- construct a tensor with all the data
     if not (path.exists(vocab_file) or path.exists(tensor_file) or path.exists(char_file)) then
         print('one-time setup: preprocessing input train/valid/test files in dir: ' .. data_dir)
-        BatchLoaderUnk.text_to_tensor(input_files, in_morpho_file, vocab_file, tensor_file, char_file, 
+        BatchLoaderUnk.text_to_tensor(input_files, in_morpho_file, use_morpho, vocab_file, tensor_file, char_file, 
                                       out_morpho_file,
-                                      max_word_l)
+                                      max_word_l, max_factor_l)
     end
 
     print('loading data files...')
     local all_data = torch.load(tensor_file) -- train, valid, test tensors
     local all_data_char = torch.load(char_file) -- train, valid, test character indices
-    local all_data_morpho = torch.load(morpho_file) -- train, valid, test character indices
+    local all_data_morpho = torch.load(out_morpho_file) -- train, valid, test character indices
     local vocab_mapping = torch.load(vocab_file)
-    self.idx2word, self.word2idx, self.idx2char, self.char2idx = table.unpack(vocab_mapping)
+    self.idx2word, self.word2idx, self.idx2char, self.char2idx, self.idx2morpho, self.morpho2idx = table.unpack(vocab_mapping)
     self.vocab_size = #self.idx2word
     print(string.format('Word vocab size: %d, Char vocab size: %d', #self.idx2word, #self.idx2char))
     -- create word-char mappings
@@ -58,16 +59,25 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
        ydata:sub(1,-2):copy(data:sub(2,-1))
        ydata[-1] = data[1]
        local data_char = torch.zeros(data:size(1), self.max_word_l):long()
-       local data_morpho = torch.ones(data:size(1), self.max_word_f):long()
        for i = 1, data:size(1) do
           data_char[i] = self:expand(all_data_char[split][i]:totable())
-          data_morpho[i] = all_data_morpho[split][i]
        end
+
+       local data_morpho
+       if use_morpho then
+          data_morpho = torch.ones(data:size(1), max_factor_l):long()
+          for i = 1, data:size(1) do
+             data_morpho[i] = all_data_morpho[split][i]
+          end
+       end
+
        if split < 3 then
           x_batches = data:view(batch_size, -1):split(seq_length, 2)
           y_batches = ydata:view(batch_size, -1):split(seq_length, 2)
           x_char_batches = data_char:view(batch_size, -1, self.max_word_l):split(seq_length,2)
-          x_morpho_batches = data_morpho:view(batch_size, -1, self.max_word_f):split(seq_length,2)
+          if use_morpho then
+             x_morpho_batches = data_morpho:view(batch_size, -1, max_factor_l):split(seq_length,2)
+          end
           nbatches = #x_batches	   
           self.split_sizes[split] = nbatches
           assert(#x_batches == #y_batches)
@@ -76,12 +86,19 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
           x_batches = {data:resize(1, data:size(1)):expand(batch_size, data:size(2))}
           y_batches = {ydata:resize(1, ydata:size(1)):expand(batch_size, ydata:size(2))}
           data_char = data_char:resize(1, data_char:size(1), data_char:size(2))
-          data_morpho = data_morpho:resize(1, data_morpho:size(1), data_morpho:size(2))
+          if use_morpho then
+             data_morpho = data_morpho:resize(1, data_morpho:size(1), data_morpho:size(2))
+             x_morpho_batches = {data_morpho:expand(batch_size, data_morpho:size(2), data_morpho:size(3))}
+          end
           x_char_batches = {data_char:expand(batch_size, data_char:size(2), data_char:size(3))}
-          x_morpho_batches = {data_morpho:expand(batch_size, data_morpho:size(2), data_morpho:size(3))}
+
           self.split_sizes[split] = 1
        end
-       self.all_batches[split] = {x_batches, y_batches, x_char_batches, x_morpho_batches}
+       if use_morpho then 
+          self.all_batches[split] = {x_batches, y_batches, x_morpho_batches}
+       else
+          self.all_batches[split] = {x_batches, y_batches, x_char_batches}
+       end
     end
     self.batch_idx = {0,0,0}
     print(string.format('data load done. Number of batches in train: %d, val: %d, test: %d', self.split_sizes[1], self.split_sizes[2], self.split_sizes[3]))
@@ -115,16 +132,16 @@ function BatchLoaderUnk:next_batch(split_idx)
     return self.all_batches[split_idx][1][idx], self.all_batches[split_idx][2][idx], self.all_batches[split_idx][3][idx]
 end
 
-function BatchLoaderUnk.text_to_tensor(input_files, morpho_file,
+function BatchLoaderUnk.text_to_tensor(input_files, morpho_file, use_morpho,
                                        out_vocabfile, out_tensorfile, out_charfile, 
                                        out_morphofile,
-                                       max_word_l)
+                                       max_word_l, max_factor_l)
     print('Processing text into tensors...')
     local tokens = opt.tokens -- inherit global constants for tokens
     local f, rawdata
     local output_tensors = {} -- output tensors for train/val/test
     local output_chars = {} -- output character tensors for train/val/test sets
-    local output_factors = {} 
+    local output_morphos = {} 
     local vocab_count = {} -- vocab count 
     local max_word_l_tmp = 0 -- max word length of the corpus
     local idx2word = {tokens.UNK} -- unknown word token
@@ -132,34 +149,36 @@ function BatchLoaderUnk.text_to_tensor(input_files, morpho_file,
     local idx2char = {tokens.ZEROPAD, tokens.START, tokens.END} -- zero-pad, start-of-word, end-of-word tokens
     local char2idx = {}; char2idx[tokens.ZEROPAD] = 1; char2idx[tokens.START] = 2; char2idx[tokens.END] = 3
     local idx2factor = {tokens.ZEROPAD, tokens.START, tokens.END} -- zero-pad, start-of-word, end-of-word tokens
-    local factor2idx = {}; factor2idx[tokens.ZEROPAD] = 1; factor2idx[tokens.START] = 2; facor2idx[tokens.END] = 3
+    local factor2idx = {}; factor2idx[tokens.ZEROPAD] = 1; factor2idx[tokens.START] = 2; factor2idx[tokens.END] = 3
     local split_counts = {}
     local morpho_dict = {}
-    
-    f = io.open(morpho_file, 'r')
-    for l in f:lines() do
-       local n = 0
-       for factor in line:gmatch'([^%s]+)' do
-          local word = nil
-          if n == 0 then
-             word = factor
-             if word2idx[word] == nil then
+
+    if use_morpho then 
+       f = io.open(morpho_file, 'r')
+       for line in f:lines() do
+          local n = 0
+          for factor in line:gmatch'([^%s]+)' do
+             local word = nil
+             if n == 0 then
+                word = factor
+                if word2idx[word] == nil then
                 idx2word[#idx2word + 1] = word
                 word2idx[word] = #idx2word
+                end
+                wordidx = word2idx[word]
+                morpho_dict[wordidx] = torch.ones(max_factor_l)
+             else
+                if factor2idx[factor] == nil then
+                   idx2factor[#idx2factor + 1] = factor
+                   factor2idx[factor] = #idx2factor
+                end
+                morpho_dict[wordidx][n] = factor2idx[factor]
              end
-             wordidx = word2idx[word]
-             morpho_dict[wordidx] = torch.Tensor(max_factor_l):ones()
-          else
-             if factor2idx[factor] == nil then
-                idx2factor[#idx2factor + 1] = factor
-                factor2idx[factor] = #idx2factor
-             end
-             morpho_dict[wordidx][n] = factor2idx[factor]
+             n = n + 1
           end
-          n = n + 1
        end
     end
-    
+
     -- first go through train/valid/test to get max word length
     -- if actual max word length (e.g. 19 for PTB) is smaller than specified
     -- we use that instead. this is inefficient, but only a one-off thing so should be fine
@@ -195,7 +214,9 @@ function BatchLoaderUnk.text_to_tensor(input_files, morpho_file,
        -- Watch out the second one needs a lot of RAM.
        output_tensors[split] = torch.LongTensor(split_counts[split])
        output_chars[split] = torch.ones(split_counts[split], max_word_l):long()
-       output_factors[split] = torch.ones(split_counts[split], max_factor_l):long()
+       if use_morpho then 
+          output_morphos[split] = torch.ones(split_counts[split], max_factor_l):long()
+       end
 
        f = io.open(input_files[split], 'r')
        local word_num = 0
@@ -214,14 +235,24 @@ function BatchLoaderUnk.text_to_tensor(input_files, morpho_file,
                 if string.sub(word,1,1) == tokens.UNK and word:len() > 1 then -- unk token with character info available
                    word = string.sub(word, 3)
                    output_tensors[split][word_num] = word2idx[tokens.UNK]
-                   output_morphos[split][word_num] = morpho_dict[word2idx[tokens.UNK]]
+                   if use_morpho then 
+                      output_morphos[split][word_num] = morpho_dict[word2idx[tokens.UNK]]
+                   end
                 else
                    if word2idx[word]==nil then
                       idx2word[#idx2word + 1] = word -- create word-idx/idx-word mappings
                       word2idx[word] = #idx2word
                    end
                    output_tensors[split][word_num] = word2idx[word]
-                   output_morphos[split][word_num] = morpho_dict[word2idx[word]]
+                   if use_morpho then 
+                      if morpho_dict[word2idx[word]] == nil then 
+                         print("no morpho for:", word)
+                         output_morphos[split][word_num] = torch.ones(max_factor_l)
+                      else
+                         output_morphos[split][word_num] = morpho_dict[word2idx[word]]
+                      end
+
+                   end
                 end
               
               
@@ -247,13 +278,15 @@ function BatchLoaderUnk.text_to_tensor(input_files, morpho_file,
     print "done"
     -- save output preprocessed files
     print('saving ' .. out_vocabfile)
-    torch.save(out_vocabfile, {idx2word, word2idx, idx2char, char2idx})
+    torch.save(out_vocabfile, {idx2word, word2idx, idx2char, char2idx, idx2factor, factor2idx})
     print('saving ' .. out_tensorfile)
     torch.save(out_tensorfile, output_tensors)
     print('saving ' .. out_charfile)
     torch.save(out_charfile, output_chars)
-    print('saving ' .. out_morphofile)
-    torch.save(out_morphofile, output_morphos)
+    if use_morpho then 
+       print('saving ' .. out_morphofile)
+       torch.save(out_morphofile, output_morphos)
+    end
 end
 
 return BatchLoaderUnk
