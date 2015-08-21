@@ -31,9 +31,11 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/vali
 cmd:option('-rnn_size', 650, 'size of LSTM internal state')
 cmd:option('-use_words', 0, 'use words (1=yes)')
 cmd:option('-use_chars', 1, 'use characters (1=yes)')
+cmd:option('-use_morpho', 0, 'use explicit morphemes (B&B baseline) (1=yes)')
 cmd:option('-highway_layers', 2, 'number of highway layers')
 cmd:option('-word_vec_size', 650, 'dimensionality of word embeddings')
 cmd:option('-char_vec_size', 15, 'dimensionality of character embeddings')
+cmd:option('-morpho_vec_size', 100, 'dimensionality of morpho embeddings')
 cmd:option('-feature_maps', '{50,100,150,200,200,200,200}', 'number of feature maps in the CNN')
 cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
@@ -49,6 +51,7 @@ cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',25,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-max_word_l',50,'maximum word length')
+cmd:option('-max_factor_l',10,'maximum word length')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
@@ -67,9 +70,9 @@ cmd:text()
 opt = cmd:parse(arg)
 torch.manualSeed(opt.seed)
 
-assert(opt.use_words == 1 or opt.use_words == 0, '-use_words has to be 0 or 1')
-assert(opt.use_chars == 1 or opt.use_chars == 0, '-use_chars has to be 0 or 1')
-assert((opt.use_chars + opt.use_words) > 0, 'has to use at least one of words or chars')
+assert(opt.use_words == 1 or opt.use_words == 0 or opt.use_morpho == 1, '-use_words has to be 0 or 1')
+assert(opt.use_chars == 1 or opt.use_chars == 0 or opt.use_morpho == 1, '-use_chars has to be 0 or 1')
+assert((opt.use_chars + opt.use_words + opt.use_morpho) > 0, 'has to use at least one of words or chars')
 
 --if opt.threads > 0 then
 --    torch.setnumthreads(opt.threads)
@@ -93,6 +96,7 @@ end
 TDNN = require 'model.TDNN'
 LSTMTDNN = require 'model.LSTMTDNN'
 HighwayMLP = require 'model.HighwayMLP'
+BoW = require 'model.BoW'
 
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
@@ -109,7 +113,8 @@ opt.tokens.END = '}' -- end-of-word token
 opt.tokens.ZEROPAD = ' ' -- zero-pad token 
 
 -- create the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
+loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l,
+                            opt.max_factor_l, opt.use_morpho)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
 opt.max_word_l = loader.max_word_l
@@ -128,12 +133,18 @@ end
 protos = {}
 print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
 
+
 if retrain then
     protos = checkpoint.protos
 else
-    protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
-				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers)
+   protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout,
+                                  #loader.idx2word, opt.word_vec_size,
+                                  #loader.idx2char, opt.char_vec_size, 
+                                  #loader.idx2morpho, opt.morpho_vec_size, 
+                                  opt.feature_maps, 
+                                  opt.kernels, loader.max_word_l,
+                                  opt.use_words, opt.use_chars, opt.use_morpho, 
+                                  opt.batch_norm, opt.highway_layers)
     -- training criterion (negative log likelihood)
     protos.criterion = nn.ClassNLLCriterion()
 end
@@ -170,7 +181,10 @@ function get_layer(layer)
 	    word_vecs = layer
 	elseif layer.name == 'char_vecs' then
 	    char_vecs = layer
-	elseif layer.name == 'cnn' then
+	elseif layer.name == 'morpho_vecs' then
+       morpho_vecs = layer
+       print("MORPHO", morpho_vecs.weight:size())
+    elseif layer.name == 'cnn' then
 	    cnn = layer
 	end
     end
@@ -188,9 +202,11 @@ end
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
     local u = {}
-    if opt.use_chars == 1 then table.insert(u, x_char[{{},t}]) end
+    if opt.use_chars == 1 or opt.use_morpho == 1 then table.insert(u, x_char[{{},t}]) end
     if opt.use_words == 1 then table.insert(u, x[{{},t}]) end
+
     for i = 1, #prev_states do table.insert(u, prev_states[i]) end
+    -- print(u[1])
     return u
 end
 
@@ -237,6 +253,7 @@ function eval_split(split_idx, max_batches)
 	end
 	protos.rnn:evaluate() -- just need one clone
 	for t = 1, x:size(2) do
+
 	    local lst = protos.rnn:forward(get_input(x, x_char, t, rnn_state[0]))
 	    rnn_state[0] = {}
 	    for i=1,#init_state do table.insert(rnn_state[0], lst[i]) end
@@ -257,7 +274,7 @@ function feval(x)
         params:copy(x)
     end
     grad_params:zero()
-
+    
     ------------------ get minibatch -------------------
     local x, y, x_char = loader:next_batch(1) --from train
     if opt.gpuid >= 0 then -- ship the input arrays to GPU
@@ -272,6 +289,7 @@ function feval(x)
     local loss = 0
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
+        --print(get_input(x, x_char, t, rnn_state[t-1])[1])
         local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
         rnn_state[t] = {}
         for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
@@ -286,10 +304,10 @@ function feval(x)
         -- backprop through loss, and softmax/linear
         local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
         table.insert(drnn_state[t], doutput_t)
-	table.insert(rnn_state[t-1], drnn_state[t])
+        table.insert(rnn_state[t-1], drnn_state[t])
         local dlst = clones.rnn[t]:backward(get_input(x, x_char, t, rnn_state[t-1]), drnn_state[t])
         drnn_state[t-1] = {}
-	local tmp = opt.use_words + opt.use_chars -- not the safest way but quick
+        local tmp = opt.use_words + opt.use_chars + opt.use_morpho -- not the safest way but quick
         for k,v in pairs(dlst) do
             if k > tmp then -- k == 1 is gradient on x, which we dont need
                 -- note we do k-1 because first item is dembeddings, and then follow the 
@@ -303,12 +321,20 @@ function feval(x)
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
     
     -- renormalize gradients
+    if morpho_vecs ~= nil then
+       morpho_vecs.gradWeight[1]:zero()
+    end
+
     local grad_norm = grad_params:norm()
+
     if grad_norm > opt.max_grad_norm then
         local shrink_factor = opt.max_grad_norm / grad_norm
 	grad_params:mul(shrink_factor)
     end    
     params:add(grad_params:mul(-lr)) -- update params
+    -- print(loss)
+    -- print("ROUND")
+
     return torch.exp(loss)
 end
 
@@ -318,6 +344,10 @@ val_losses = {}
 lr = opt.learning_rate -- starting learning rate which will be decayed
 local iterations = opt.max_epochs * loader.split_sizes[1]
 if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
+if morpho_vecs ~= nil then
+   morpho_vecs.weight[1]:zero()
+end
+
 for i = 1, iterations do
     local epoch = i / loader.split_sizes[1]
 
@@ -326,8 +356,13 @@ for i = 1, iterations do
     
     train_loss = feval(params) -- fwd/backprop and update params
     if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
+    if morpho_vecs ~= nil then
+       morpho_vecs.weight[1]:zero()
+    end
+
     train_losses[i] = train_loss
 
+    
     -- every now and then or on last iteration
     if i % i == iterations or i % loader.split_sizes[1] == 0 then
         -- evaluate loss on validation data
