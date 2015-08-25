@@ -44,8 +44,10 @@ widely used by the language modeling community) is given as the default.
 The paper also runs the models on non-English data (Czech, French, German, Russian, and Spanish), from the ICML 2014
 paper [Compositional Morphology for Word Representations and Language Modelling](http://arxiv.org/abs/1405.4273)
 by Jan Botha and Phil Blunsom. This can be downloaded from [Jan's website](https://bothameister.github.io).
-We also provide a script to download them and save in the relevant folders (see `get_data.sh`).
-The script further downloads the Reddit data used in the paper.
+We also run the model on the [Reddit comments corpus](https://archive.org/details/2015_reddit_comments_corpus).
+
+For ease of use, we provide a script to download all the data used in the paper (`get_data.sh`). 
+The script also saves the downloaded data into the relevant folders.
 
 #### Note on PTB
 The PTB data above does not have end-of-sentence tokens for each sentence, and hence these must be
@@ -53,7 +55,7 @@ manually appended. This can be done by adding `-EOS '+'` to the script (obviousl
 can use other characters than `+` to represent an end-of-sentence token---we recommend a single
 unused character).
 
-Jan's datasets already have end-of-sentence tokens for each line so you do not need to 
+The Reddit/non-English data already have end-of-sentence tokens for each line so you do not need to 
 add the `-EOS` command (equivalent to adding `-EOS ''`, which is the default).
 
 ### Model
@@ -106,7 +108,7 @@ Where `model_file.t7` is the path to the best performing (on validation) model.
 This will also save some basic statistics (e.g. perplexity by token) in
 `model_results.t7`.
 
-### Larger Data
+### Training on Larger Data
 If using the model on larger data (e.g. 50M tokens), you can change
 `-batch_size` to something like 100 to make it train faster. 
 
