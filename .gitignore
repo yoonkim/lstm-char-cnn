@@ -1,6 +1,4 @@
 *.t7
-*.sh
-*.sh~
 *.out
 *.err
 *.txt
