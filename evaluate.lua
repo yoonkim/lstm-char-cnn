@@ -26,7 +26,9 @@ cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/vali
 cmd:option('-savefile', 'final-results/lm_results.t7', 'save results to')
 cmd:option('-model', 'final-results/en-large-word-model.t7', 'model checkpoint file')
 -- GPU/CPU
-cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-gpuid', -1,'which gpu to use. -1 = use CPU')
+cmd:option('-cudnn', 0,'use cudnn (1 = yes, 0 = no)')
+
 cmd:text()
 
 -- parse input params
@@ -38,7 +40,7 @@ if opt2.gpuid >= 0 then
     cutorch.setDevice(opt2.gpuid + 1)
 end
 
-if opt.cudnn == 1 then
+if opt2.cudnn == 1 then
     assert(opt2.gpuid >= 0, 'GPU must be used if using cudnn')
     print('using cudnn')
     require 'cudnn'
