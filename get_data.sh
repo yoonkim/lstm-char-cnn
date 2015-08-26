@@ -28,8 +28,3 @@ mkdir data/ru/
 cp en-ru/1m-mono/train.in data/ru/train.txt
 cp en-ru/1m-mono/test.in data/ru/valid.txt
 cp en-ru/1m-mono/finaltest.in data/ru/test.txt
-
-#download reddit data
-wget https://www.dropbox.com/s/5je13yrjubymtok/reddit.tar.gz?dl=1 -O reddit.tar.gz
-tar xf reddit.tar.gz
-mv re data
