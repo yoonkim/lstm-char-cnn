@@ -4,7 +4,7 @@ local ok, cunn = pcall(require, 'fbcunn')
 if not ok then
     LookupTable = nn.LookupTable
 else
-    LookupTable = fbcunn.LookupTableGPU
+    LookupTable = nn.LookupTableGPU
 end
 
 function LSTM.lstm(input_size, rnn_size, n, dropout, k)
