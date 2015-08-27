@@ -1,12 +1,12 @@
 ## Character-Aware Neural Language Models
+Code for the paper [Character-Aware Neural Language Models](http://arxiv.org/abs/1508.06615).
+
 A neural language model (NLM) built on character inputs only. Predictions
 are still made at the word-level. The model employs a convolutional neural network (CNN) over characters 
 to use as inputs into an long short-term memory (LSTM)
 recurrent neural network language model (RNN-LM). Also optionally
 passes the output from the CNN through a [Highway Network](http://arxiv.org/abs/1507.06228), 
 which improves performance.
-
-Note: Paper will be posted on arXiv very soon.
 
 Much of the base code is from Andrej Karpathy's excellent character RNN implementation,
 available at https://github.com/karpathy/char-rnn
