@@ -31,6 +31,7 @@ the large character/word-level models described below).
 
 ```
 git clone https://github.com/soumith/cudnn.torch.git
+cd cudnn.torch
 luarocks make cudnn-scm-1.rockspec
 ```
 ### Data
