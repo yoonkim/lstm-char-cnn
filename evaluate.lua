@@ -13,7 +13,9 @@ require 'optim'
 require 'lfs'
 require 'util.Squeeze'
 require 'util.misc'
+require 'util.HLogSoftMax'
 
+HSMClass = require 'util.HSMClass'
 BatchLoader = require 'util.BatchLoaderUnk'
 model_utils = require 'util.model_utils'
 
@@ -23,9 +25,9 @@ cmd = torch.CmdLine()
 cmd:text('Options')
 -- data
 cmd:option('-data_dir','data/ptb','data directory. Should contain train.txt/valid.txt/test.txt with input data')
-cmd:option('-savefile', 'final-results/lm_results.t7', 'save results to')
-cmd:option('-model', 'final-results/en-large-word-model.t7', 'model checkpoint file')
--- GPU/CPU
+cmd:option('-savefile', 'model_results.t7', 'save results to')
+cmd:option('-model', 'en-large-word-model.t7', 'model checkpoint file')
+-- GPU/CPU these params must be passed in because it affects the constructors
 cmd:option('-gpuid', -1,'which gpu to use. -1 = use CPU')
 cmd:option('-cudnn', 0,'use cudnn (1 = yes, 0 = no)')
 
@@ -59,7 +61,7 @@ print('val_losses: ')
 print(checkpoint.val_losses)
 idx2word, word2idx, idx2char, char2idx = table.unpack(checkpoint.vocab)
 
--- recreate the data loader class, with batchsize = 1
+-- recreate the data loader class
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
@@ -73,17 +75,18 @@ for L=1,opt.num_layers do
     table.insert(init_state, h_init:clone())
 end
 
--- training criterion (negative log likelihood)
-protos.criterion = nn.ClassNLLCriterion()
-
 -- ship the model to the GPU if desired
 if opt.gpuid >= 0 then
     for k,v in pairs(protos) do v:cuda() end
 end
 
 params, grad_params = model_utils.combine_all_parameters(protos.rnn)
-
-print('number of parameters in the model: ' .. params:nElement())
+if opt.hsm > 0 then
+    hsm_params, hsm_grad_params = model_utils.combine_all_parameters(protos.criterion)
+    print('number of parameters in the model: ' .. params:nElement() + hsm_params:nElement())
+else
+    print('number of parameters in the model: ' .. params:nElement())
+end
 
 -- for easy switch between using words/chars (or both)
 function get_input(x, x_char, t, prev_states)
@@ -101,6 +104,9 @@ end
 -- evaluate the loss over an entire split
 function eval_split_full(split_idx)
     print('evaluating loss over split index ' .. split_idx)
+    if opt.hsm > 0 then
+        protos.criterion:change_bias()
+    end
     local n = loader.split_sizes[split_idx]
     loader:reset_batch_pointer(split_idx) -- move batch iteration pointer for this split to front
     local loss = 0

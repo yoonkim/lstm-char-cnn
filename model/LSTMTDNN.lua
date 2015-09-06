@@ -4,11 +4,11 @@ local ok, cunn = pcall(require, 'fbcunn')
 if not ok then
     LookupTable = nn.LookupTable
 else
-    LookupTable = fbcunn.LookupTableGPU
+    LookupTable = nn.LookupTableGPU
 end
 
 function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size, char_vocab_size, char_vec_size,
-	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm, highway_layers)
+	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm, highway_layers, hsm)
     -- rnn_size = dimensionality of hidden layers
     -- n = number of layers
     -- dropout = dropout probability
@@ -108,11 +108,19 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 
   -- set up the decoder
     local top_h = outputs[#outputs]
-    if dropout > 0 then top_h = nn.Dropout(dropout)(top_h) end
-    local proj = nn.Linear(rnn_size, word_vocab_size)(top_h)
-    local logsoft = nn.LogSoftMax()(proj)
-    table.insert(outputs, logsoft)
+    if dropout > 0 then 
+        top_h = nn.Dropout(dropout)(top_h) 
+    else
+        top_h = nn.Identity()(top_h) --to be compatiable with dropout=0 and hsm>1
+    end
 
+    if hsm > 0 then -- if HSM is used then softmax will be done later
+        table.insert(outputs, top_h)
+    else
+        local proj = nn.Linear(rnn_size, word_vocab_size)(top_h)
+        local logsoft = nn.LogSoftMax()(proj)
+        table.insert(outputs, logsoft)
+    end
     return nn.gModule(inputs, outputs)
 end
 

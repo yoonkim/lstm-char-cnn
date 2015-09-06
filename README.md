@@ -55,7 +55,7 @@ manually appended. This can be done by adding `-EOS '+'` to the script (obviousl
 can use other characters than `+` to represent an end-of-sentence token---we recommend a single
 unused character).
 
-The Reddit/non-English data already have end-of-sentence tokens for each line so you do not need to 
+The non-English data already have end-of-sentence tokens for each line so you do not need to 
 add the `-EOS` command (equivalent to adding `-EOS ''`, which is the default).
 
 ### Model
@@ -108,10 +108,17 @@ Where `model_file.t7` is the path to the best performing (on validation) model.
 This will also save some basic statistics (e.g. perplexity by token) in
 `model_results.t7`.
 
-### Training on Larger Data
-If using the model on larger data (e.g. 10M+ tokens), you can change
-`-batch_size` to something like 100 to make it train faster. You will also
-probably want hierarchical softmax (coming soon).
+### Hierarchical Softmax
+Training on a larger vocabulary (e.g. 100K+) will require hierarchical softmax (HSM)
+to train at a reasonable speed. You can use the `-hsm` option to do this.
+For example `-hsm 500` will randomly split the vocabulary into 500 clusters of
+(approximately) equal size. `-hsm 0` is the default and will not use HSM.
+`-hsm -1` will automatically choose the number of clusters for you, by choosing the integer
+closest to sqrt(|V|).
+
+### Batch Size
+If training on bigger datasets you should probably use a 
+larger batch size (e.g. `-batch_size 100`).
 
 ### Licence
 MIT

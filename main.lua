@@ -39,6 +39,7 @@ cmd:option('-kernels', '{1,2,3,4,5,6,7}', 'conv net kernel widths')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
 cmd:option('-dropout',0.5,'dropout. 0 = no dropout')
 -- optimization
+cmd:option('-hsm',0,'number of clusters to use for hsm. 0 = normal softmax, -1 = use sqrt(|V|)')
 cmd:option('-learning_rate',1,'starting learning rate')
 cmd:option('-learning_rate_decay',0.5,'learning rate decay')
 cmd:option('-decay_when',1,'decay if validation perplexity does not improve by more than this much')
@@ -53,12 +54,13 @@ cmd:option('-threads', 16, 'number of threads')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
+cmd:option('-save_every', 1, 'save every n epochs')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
 cmd:option('-EOS', '', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
-cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
+cmd:option('-gpuid', -1,'which gpu to use. -1 = use CPU')
 cmd:option('-cudnn', 0,'use cudnn (1=yes). this should greatly speed up convolutions')
 cmd:option('-time', 0, 'print batch times')
 cmd:text()
@@ -75,25 +77,6 @@ assert((opt.use_chars + opt.use_words) > 0, 'has to use at least one of words or
 --    torch.setnumthreads(opt.threads)
 --end
 
-if opt.gpuid >= 0 then
-    print('using CUDA on GPU ' .. opt.gpuid .. '...')
-    require 'cutorch'
-    require 'cunn'
-    cutorch.setDevice(opt.gpuid + 1)
-end
-
-if opt.cudnn == 1 then
-   assert(opt.gpuid >= 0, 'GPU must be used if using cudnn')
-   print('using cudnn...')
-   require 'cudnn'
-end
-
--- load models. we do this here instead of before
--- because of cudnn
-TDNN = require 'model.TDNN'
-LSTMTDNN = require 'model.LSTMTDNN'
-HighwayMLP = require 'model.HighwayMLP'
-
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
 loadstring('opt.feature_maps = ' .. opt.feature_maps)() -- get feature map sizes
@@ -108,11 +91,65 @@ opt.tokens.START = '{' -- start-of-word token
 opt.tokens.END = '}' -- end-of-word token
 opt.tokens.ZEROPAD = ' ' -- zero-pad token 
 
+-- load necessary packages depending on config options
+if opt.gpuid >= 0 then
+    print('using CUDA on GPU ' .. opt.gpuid .. '...')
+    require 'cutorch'
+    require 'cunn'
+    cutorch.setDevice(opt.gpuid + 1)
+end
+
+if opt.cudnn == 1 then
+   assert(opt.gpuid >= 0, 'GPU must be used if using cudnn')
+   print('using cudnn...')
+   require 'cudnn'
+end
+
 -- create the data loader class
 loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
 opt.max_word_l = loader.max_word_l
+
+-- if number of clusters is not explicitly provided
+if opt.hsm == -1 then
+    opt.hsm = torch.round(torch.sqrt(#loader.idx2word))
+end
+
+if opt.hsm > 0 then
+    -- partition into opt.hsm clusters
+    -- we want roughly equal number of words in each cluster
+    HSMClass = require 'util.HSMClass'
+    require 'util.HLogSoftMax'
+    mapping = torch.LongTensor(#loader.idx2word, 2):zero()
+    local n_in_each_cluster = #loader.idx2word / opt.hsm
+    local _, idx = torch.sort(torch.randn(#loader.idx2word), 1, true)   
+    local n_in_cluster = {} --number of tokens in each cluster
+    local c = 1
+    for i = 1, idx:size(1) do
+        local word_idx = idx[i] 
+        if n_in_cluster[c] == nil then
+            n_in_cluster[c] = 1
+        else
+            n_in_cluster[c] = n_in_cluster[c] + 1
+        end
+        mapping[word_idx][1] = c
+        mapping[word_idx][2] = n_in_cluster[c]        
+        if n_in_cluster[c] >= n_in_each_cluster then
+            c = c+1
+        end
+        if c > opt.hsm then --take care of some corner cases
+            c = opt.hsm
+        end
+    end
+    print(string.format('using hierarchical softmax with %d classes', opt.hsm))
+end
+
+
+-- load model objects. we do this here because of cudnn and hsm options
+TDNN = require 'model.TDNN'
+LSTMTDNN = require 'model.LSTMTDNN'
+HighwayMLP = require 'model.HighwayMLP'
 
 -- make sure output directory exists
 if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
@@ -127,15 +164,18 @@ end
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
 print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
-
 if retrain then
     protos = checkpoint.protos
 else
     protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
 				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers)
+				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers, opt.hsm)
     -- training criterion (negative log likelihood)
-    protos.criterion = nn.ClassNLLCriterion()
+    if opt.hsm > 0 then
+        protos.criterion = nn.HLogSoftMax(mapping, opt.rnn_size)
+    else
+        protos.criterion = nn.ClassNLLCriterion()
+    end
 end
 
 -- the initial state of the cell/hidden states
@@ -154,13 +194,20 @@ end
 
 -- put the above things into one flattened parameters tensor
 params, grad_params = model_utils.combine_all_parameters(protos.rnn)
+-- hsm has its own params
+if opt.hsm > 0 then
+    hsm_params, hsm_grad_params = protos.criterion:getParameters()
+    hsm_params:uniform(-opt.param_init, opt.param_init)
+    print('number of parameters in the model: ' .. params:nElement() + hsm_params:nElement())
+else
+    print('number of parameters in the model: ' .. params:nElement())
+end
 
 -- initialization
 if not retrain then
    params:uniform(-opt.param_init, opt.param_init) -- small numbers uniform if starting from scratch
 end
 
-print('number of parameters in the model: ' .. params:nElement())
 
 -- get layers which will be referenced layer (during SGD or introspection)
 function get_layer(layer)
@@ -198,6 +245,10 @@ end
 function eval_split(split_idx, max_batches)
     print('evaluating loss over split index ' .. split_idx)
     local n = loader.split_sizes[split_idx]
+    if opt.hsm > 0 then
+        protos.criterion:change_bias()
+    end
+
     if max_batches ~= nil then n = math.min(max_batches, n) end
 
     loader:reset_batch_pointer(split_idx) -- move batch iteration pointer for this split to front
@@ -218,13 +269,14 @@ function eval_split(split_idx, max_batches)
 		clones.rnn[t]:evaluate() -- for dropout proper functioning
 		local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
 		rnn_state[t] = {}
-		for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end
-		prediction = lst[#lst] 
-		loss = loss + clones.criterion[t]:forward(prediction, y[{{}, t}])
+		for i=1,#init_state do 
+                    table.insert(rnn_state[t], lst[i])
+                end
+		prediction = lst[#lst]
+                loss = loss + clones.criterion[t]:forward(prediction, y[{{}, t}])
 	    end
 	    -- carry over lstm state
 	    rnn_state[0] = rnn_state[#rnn_state]
-	    -- print(i .. '/' .. n .. '...')
 	end
 	loss = loss / opt.seq_length / n
     else -- full eval on test set
@@ -241,8 +293,9 @@ function eval_split(split_idx, max_batches)
 	    rnn_state[0] = {}
 	    for i=1,#init_state do table.insert(rnn_state[0], lst[i]) end
 	    prediction = lst[#lst] 
-	    local tok_perp = protos.criterion:forward(prediction, y[{{},t}])
-	    loss = loss + tok_perp
+            local tok_perp
+            tok_perp = protos.criterion:forward(prediction, y[{{},t}])
+            loss = loss + tok_perp
 	end
 	loss = loss / x:size(2)
     end    
@@ -257,7 +310,9 @@ function feval(x)
         params:copy(x)
     end
     grad_params:zero()
-
+    if opt.hsm > 0 then
+        hsm_grad_params:zero()
+    end
     ------------------ get minibatch -------------------
     local x, y, x_char = loader:next_batch(1) --from train
     if opt.gpuid >= 0 then -- ship the input arrays to GPU
@@ -271,10 +326,12 @@ function feval(x)
     local predictions = {}           -- softmax outputs
     local loss = 0
     for t=1,opt.seq_length do
-        clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
+        clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)        
         local lst = clones.rnn[t]:forward(get_input(x, x_char, t, rnn_state[t-1]))
         rnn_state[t] = {}
-        for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
+        for i=1,#init_state do 
+            table.insert(rnn_state[t], lst[i]) 
+        end -- extract the state, without output
         predictions[t] = lst[#lst] -- last element is the prediction
         loss = loss + clones.criterion[t]:forward(predictions[t], y[{{}, t}])
     end
@@ -298,19 +355,32 @@ function feval(x)
             end
         end	
     end
+
     ------------------------ misc ----------------------
     -- transfer final state to initial state (BPTT)
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
     
     -- renormalize gradients
-    local grad_norm = grad_params:norm()
+    local grad_norm, shrink_factor
+    if opt.hsm==0 then
+        grad_norm = grad_params:norm()
+    else
+        grad_norm = torch.sqrt(grad_params:norm()^2 + hsm_grad_params:norm()^2)
+    end
     if grad_norm > opt.max_grad_norm then
-        local shrink_factor = opt.max_grad_norm / grad_norm
-	grad_params:mul(shrink_factor)
+        shrink_factor = opt.max_grad_norm / grad_norm
+        grad_params:mul(shrink_factor)
+        if opt.hsm > 0 then
+            hsm_grad_params:mul(shrink_factor)
+        end
     end    
     params:add(grad_params:mul(-lr)) -- update params
+    if opt.hsm > 0 then
+        hsm_params:add(hsm_grad_params:mul(-lr))
+    end
     return torch.exp(loss)
 end
+
 
 -- start optimization here
 train_losses = {}
@@ -325,16 +395,18 @@ for i = 1, iterations do
     local time = timer:time().real
     
     train_loss = feval(params) -- fwd/backprop and update params
-    if char_vecs ~= nil then char_vecs.weight[1]:zero() end -- zero-padding vector is always zero
+    if char_vecs ~= nil then -- zero-padding vector is always zero
+        char_vecs.weight[1]:zero() 
+        char_vecs.gradWeight[1]:zero()
+    end 
     train_losses[i] = train_loss
 
     -- every now and then or on last iteration
-    if i % i == iterations or i % loader.split_sizes[1] == 0 then
+    if i % loader.split_sizes[1] == 0 then
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
         val_losses[#val_losses+1] = val_loss
         local savefile = string.format('%s/lm_%s_epoch%.2f_%.2f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
-        print('saving checkpoint to ' .. savefile)
         local checkpoint = {}
         checkpoint.protos = protos
         checkpoint.opt = opt
@@ -345,7 +417,10 @@ for i = 1, iterations do
         checkpoint.epoch = epoch
         checkpoint.vocab = {loader.idx2word, loader.word2idx, loader.idx2char, loader.char2idx}
 	checkpoint.lr = lr
-        torch.save(savefile, checkpoint)
+        print('saving checkpoint to ' .. savefile)
+        if epoch == opt.max_epochs or epoch % opt.save_every == 0 then
+            torch.save(savefile, checkpoint)
+        end
     end
 
     -- decay learning rate after epoch
