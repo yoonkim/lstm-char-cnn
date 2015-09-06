@@ -26,7 +26,7 @@ luarocks install cunn
 
 `cudnn` will result in a good (8x-10x) speed-up for convolutions, so it is
 highly recommended. This will make the training time of a character-level model 
-be somewhat competitive against a word-level model (0.5 secs/batch vs 0.25 secs/batch for 
+be somewhat competitive against a word-level model (1500 tokens/sec vs 3000 tokens/sec for 
 the large character/word-level models described below).
 
 ```
