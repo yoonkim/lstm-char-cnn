@@ -1,19 +1,25 @@
 import sys, os
 out = open("/tmp/words", 'w')
-
 data_dir = sys.argv[1]
 morfessor_dir = sys.argv[2]
-
+counts = {}
 
 for f in ["train.txt", "valid.txt", "test.txt"]:
     for l in open(data_dir + "/" + f):
         words = l.strip().split()
         for w in words:
-            print >>out, 1,  w.replace("\\", "")
+            counts.setdefault(w, 0)
+            counts[w] += 1
 
-os.system("cd %s/train; cp /tmp/words mydata; rm mydata.gz; gzip mydata; make clean; make; cp segmentation.final.gz /tmp/morph.gz; rm /tmp/morph; gunzip /tmp/morph.gz"%(morfessor_dir,))
+for k, v in counts.iteritems():
+    w = k.replace("\\", "")
+    w = k.replace("/", "")
+    if w.strip():
+        print >>out, v, w
 
-f = open("/tmp/morph")
+os.system("cd %s; cp /tmp/words mydata; rm mydata.gz; gzip mydata; rm baseline*; make clean; make; gunzip segmentation.final.gz"%(morfessor_dir,))
+
+f = open("%s/segmentation.final"%(morfessor_dir,))
 words = {}
 for line in f:
     if line[0] == "#": 
