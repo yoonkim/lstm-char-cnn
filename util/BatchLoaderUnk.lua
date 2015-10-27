@@ -1,7 +1,7 @@
 
 -- Modified from https://github.com/karpathy/char-rnn
 -- This version is for cases where one has already segmented train/val/test splits
-
+require './misc.lua'
 local BatchLoaderUnk = {}
 local stringx = require('pl.stringx')
 BatchLoaderUnk.__index = BatchLoaderUnk
@@ -40,7 +40,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     self.seq_length = seq_length
     self.split_sizes = {}
     self.all_batches = {}
-    print('reshaping tensors...')  
+    print('reshaping tensors...')
     local x_batches, y_batches, nbatches
     for split, data in ipairs(all_data) do
        local len = data:size(1)
@@ -58,7 +58,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
           x_batches = data:view(batch_size, -1):split(seq_length, 2)
           y_batches = ydata:view(batch_size, -1):split(seq_length, 2)
           x_char_batches = data_char:view(batch_size, -1, self.max_word_l):split(seq_length,2)
-          nbatches = #x_batches	   
+          nbatches = #x_batches
           self.split_sizes[split] = nbatches
           assert(#x_batches == #y_batches)
           assert(#x_batches == #x_char_batches)
@@ -67,7 +67,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
           y_batches = {ydata:resize(1, ydata:size(1)):expand(batch_size, ydata:size(2))}
           data_char = data_char:resize(1, data_char:size(1), data_char:size(2))
           x_char_batches = {data_char:expand(batch_size, data_char:size(2), data_char:size(3))}
-          self.split_sizes[split] = 1	
+          self.split_sizes[split] = 1
        end
        self.all_batches[split] = {x_batches, y_batches, x_char_batches}
     end
@@ -77,7 +77,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
     return self
 end
 
-function BatchLoaderUnk:expand(t)    
+function BatchLoaderUnk:expand(t)
     for i = 1, self.padding do
         table.insert(t, 1, 1) -- 1 is always char idx for zero pad
     end
@@ -109,7 +109,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
     local f, rawdata
     local output_tensors = {} -- output tensors for train/val/test
     local output_chars = {} -- output character tensors for train/val/test sets
-    local vocab_count = {} -- vocab count 
+    local vocab_count = {} -- vocab count
     local max_word_l_tmp = 0 -- max word length of the corpus
     local idx2word = {tokens.UNK} -- unknown word token
     local word2idx = {}; word2idx[tokens.UNK] = 1
@@ -122,32 +122,32 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
     -- we use that instead. this is inefficient, but only a one-off thing so should be fine
     -- also counts the number of tokens
     for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)
-       f = io.open(input_files[split], 'r')       
+       f = io.open(input_files[split], 'r')
        local counts = 0
        for line in f:lines() do
           line = stringx.replace(line, '<unk>', tokens.UNK) -- replace unk with a single character
-	  line = stringx.replace(line, tokens.START, '') --start-of-word token is reserved
-	  line = stringx.replace(line, tokens.END, '') --end-of-word token is reserved
+	        line = stringx.replace(line, tokens.START, '') --start-of-word token is reserved
+	        line = stringx.replace(line, tokens.END, '') --end-of-word token is reserved
           for word in line:gmatch'([^%s]+)' do
-	     max_word_l_tmp = math.max(max_word_l_tmp, word:len())
-	     counts = counts + 1
+	          max_word_l_tmp = math.max(max_word_l_tmp, RuneCount(word))
+	          counts = counts + 1
           end
-	  if tokens.EOS ~= '' then
-	      counts = counts + 1 --PTB uses \n for <eos>, so need to add one more token at the end
-	  end
+	        if tokens.EOS ~= '' then
+	          counts = counts + 1 --PTB uses \n for <eos>, so need to add one more token at the end
+	        end
        end
        f:close()
        split_counts[split] = counts
     end
-      
+
     print('After first pass of data, max word length is: ' .. max_word_l_tmp)
-    print(string.format('Token count: train %d, val %d, test %d', 
+    print(string.format('Token count: train %d, val %d, test %d',
     			split_counts[1], split_counts[2], split_counts[3]))
 
     -- if actual max word length is less than the limit, use that
     max_word_l = math.min(max_word_l_tmp, max_word_l)
-   
-    for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)     
+
+    for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)
        -- Preallocate the tensors we will need.
        -- Watch out the second one needs a lot of RAM.
        output_tensors[split] = torch.LongTensor(split_counts[split])
@@ -157,8 +157,8 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
        local word_num = 0
        for line in f:lines() do
           line = stringx.replace(line, '<unk>', tokens.UNK)
-	  line = stringx.replace(line, tokens.START, '') -- start and end of word tokens are reserved
-	  line = stringx.replace(line, tokens.END, '')
+	        line = stringx.replace(line, tokens.START, '') -- start and end of word tokens are reserved
+	        line = stringx.replace(line, tokens.END, '')
           for rword in line:gmatch'([^%s]+)' do
              function append(word)
                 word_num = word_num + 1
@@ -167,7 +167,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
                    collectgarbage()
                 end
                 local chars = {char2idx[tokens.START]} -- start-of-word symbol
-                if string.sub(word,1,1) == tokens.UNK and word:len() > 1 then -- unk token with character info available
+                if string.sub(word,1,1) == tokens.UNK and RuneCount(word) > 1 then -- unk token with character info available
                    word = string.sub(word, 3)
                    output_tensors[split][word_num] = word2idx[tokens.UNK]
                 else
@@ -177,7 +177,8 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
                    end
                    output_tensors[split][word_num] = word2idx[word]
                 end
-                for char in word:gmatch'.' do
+
+                for char_code, char in pairs(UTF8ToCharArray(word)) do
                    if char2idx[char]==nil then
                       idx2char[#idx2char + 1] = char -- create char-idx/idx-char mappings
                       char2idx[char] = #idx2char
@@ -207,4 +208,3 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
 end
 
 return BatchLoaderUnk
-
