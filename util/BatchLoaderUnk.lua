@@ -167,7 +167,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
                    collectgarbage()
                 end
                 local chars = {char2idx[tokens.START]} -- start-of-word symbol
-                if string.sub(word,1,1) == tokens.UNK and word:len() > 1 then -- unk token with character info available
+                if string.sub(word,1,1) == tokens.UNK and RuneCount(word) > 1 then -- unk token with character info available
                    word = string.sub(word, 3)
                    output_tensors[split][word_num] = word2idx[tokens.UNK]
                 else
