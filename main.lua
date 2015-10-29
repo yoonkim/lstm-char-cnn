@@ -10,7 +10,6 @@ https://github.com/wojzaremba/lstm
 require 'torch'
 require 'nn'
 require 'nngraph'
-require 'optim'
 require 'lfs'
 require 'util.Squeeze'
 require 'util.misc'
@@ -54,7 +53,7 @@ cmd:option('-threads', 16, 'number of threads')
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
-cmd:option('-save_every', 1, 'save every n epochs')
+cmd:option('-save_every', 5, 'save every n epochs')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')

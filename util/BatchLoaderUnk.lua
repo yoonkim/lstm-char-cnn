@@ -5,6 +5,7 @@
 local BatchLoaderUnk = {}
 local stringx = require('pl.stringx')
 BatchLoaderUnk.__index = BatchLoaderUnk
+utf8 = require 'lua-utf8'
 
 function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_word_l)
     local self = {}
@@ -129,7 +130,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
 	  line = stringx.replace(line, tokens.START, '') --start-of-word token is reserved
 	  line = stringx.replace(line, tokens.END, '') --end-of-word token is reserved
           for word in line:gmatch'([^%s]+)' do
-	     max_word_l_tmp = math.max(max_word_l_tmp, word:len())
+	     max_word_l_tmp = math.max(max_word_l_tmp, utf8.len(word))
 	     counts = counts + 1
           end
 	  if tokens.EOS ~= '' then
@@ -177,7 +178,8 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
                    end
                    output_tensors[split][word_num] = word2idx[word]
                 end
-                for char in word:gmatch'.' do
+                local l = utf8.len(word)
+                for _, char in utf8.next, word do
                    if char2idx[char]==nil then
                       idx2char[#idx2char + 1] = char -- create char-idx/idx-char mappings
                       char2idx[char] = #idx2char

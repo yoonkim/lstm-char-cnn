@@ -2,21 +2,21 @@
 Code for the paper [Character-Aware Neural Language Models](http://arxiv.org/abs/1508.06615).
 
 A neural language model (NLM) built on character inputs only. Predictions
-are still made at the word-level. The model employs a convolutional neural network (CNN) over characters 
-to use as inputs into an long short-term memory (LSTM)
+are still made at the word-level. The model employs a convolutional neural network (CNN)
+over characters to use as inputs into an long short-term memory (LSTM)
 recurrent neural network language model (RNN-LM). Also optionally
 passes the output from the CNN through a [Highway Network](http://arxiv.org/abs/1507.06228), 
 which improves performance.
 
-Much of the base code is from Andrej Karpathy's excellent character RNN implementation,
-available at https://github.com/karpathy/char-rnn
+Much of the base code is from 
+[Andrej Karpathy's excellent character RNN implementation](https://github.com/karpathy/char-rnn).
 
 ### Requirements
 Code is written in Lua and requires Torch. It also requires
-the `nngraph` and `optim` packages, which can be installed via:
+the `nngraph` and the `luautf8` packages, which can be installed via:
 ```
 luarocks install nngraph
-luarocks install optim
+luarocks install luautf8
 ```
 GPU usage will additionally require `cutorch` and `cunn` packages:
 ```
@@ -57,6 +57,12 @@ unused character).
 
 The non-English data already have end-of-sentence tokens for each line so you do not need to 
 add the `-EOS` command (equivalent to adding `-EOS ''`, which is the default).
+
+#### Unicode in Lua
+Lua is unicode-agnostic (each string is just a sequence of bytes) so we use
+the `luautf8` package to deal with languages where a character can be more than one byte
+(e.g. Russian). Many thanks to [vseledkin](https://github.com/vseledkin) for alerting us
+to the fact that previous version of the code did not take this account!
 
 ### Model
 Here are some example scripts. Add `-gpuid 0` to each line to use a GPU (which is
