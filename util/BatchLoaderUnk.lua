@@ -180,6 +180,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
                 end
                 local l = utf8.len(word)
                 for _, char in utf8.next, word do
+                   char = utf8.char(char) -- save as actual characters
                    if char2idx[char]==nil then
                       idx2char[#idx2char + 1] = char -- create char-idx/idx-char mappings
                       char2idx[char] = #idx2char
