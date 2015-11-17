@@ -56,8 +56,8 @@ manually appended. This can be done by adding `-EOS '+'` to the script (obviousl
 can use other characters than `+` to represent an end-of-sentence token---we recommend a single
 unused character).
 
-The non-English data already have end-of-sentence tokens for each line so you do not need to 
-add the `-EOS` command (equivalent to adding `-EOS ''`).
+The non-English data already have end-of-sentence tokens for each line so, you want to add
+`-EOS ''` to the command line.
 
 #### Unicode in Lua
 Lua is unicode-agnostic (each string is just a sequence of bytes) so we use
