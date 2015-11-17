@@ -1,5 +1,6 @@
 ## Character-Aware Neural Language Models
-Code for the paper [Character-Aware Neural Language Models](http://arxiv.org/abs/1508.06615).
+Code for the paper [Character-Aware Neural Language Models](http://arxiv.org/abs/1508.06615) 
+(AAAI 2016).
 
 A neural language model (NLM) built on character inputs only. Predictions
 are still made at the word-level. The model employs a convolutional neural network (CNN)
@@ -56,7 +57,7 @@ can use other characters than `+` to represent an end-of-sentence token---we rec
 unused character).
 
 The non-English data already have end-of-sentence tokens for each line so you do not need to 
-add the `-EOS` command (equivalent to adding `-EOS ''`, which is the default).
+add the `-EOS` command (equivalent to adding `-EOS ''`).
 
 #### Unicode in Lua
 Lua is unicode-agnostic (each string is just a sequence of bytes) so we use
@@ -71,12 +72,12 @@ cudnn package. Scripts to reproduce the results of the paper can be found under 
 
 #### Character-level models
 Large character-level model (LSTM-CharCNN-Large in the paper).
-This is the default: should get ~82 on valid and ~79 on test.
+This is the default: should get ~82 on valid and ~79 on test. Takes ~5 hours with `cudnn`.
 ```
 th main.lua -savefile char-large -EOS '+'
 ```
 Small character-level model (LSTM-CharCNN-Small in the paper).
-This should get ~96 on valid and ~93 on test.
+This should get ~96 on valid and ~93 on test. Takes ~2 hours with `cudnn`.
 ```
 th main.lua -savefile char-small -rnn_size 300 -highway_layers 1 
 -kernels '{1,2,3,4,5,6}' -feature_maps '{25,50,75,100,125,150}' -EOS '+'

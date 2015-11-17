@@ -37,7 +37,6 @@ function TDNN.tdnn(length, input_size, feature_maps, kernels)
        end
        table.insert(layer1, pool_layer)
     end
-    print(#layer1)
     if #kernels > 1 then
        layer1_concat = nn.JoinTable(2)(layer1)
        output = layer1_concat

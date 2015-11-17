@@ -119,7 +119,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
     local split_counts = {}
 
     -- first go through train/valid/test to get max word length
-    -- if actual max word length (e.g. 19 for PTB) is smaller than specified
+    -- if actual max word length is smaller than specified
     -- we use that instead. this is inefficient, but only a one-off thing so should be fine
     -- also counts the number of tokens
     for	split = 1,3 do -- split = 1 (train), 2 (val), or 3 (test)
@@ -130,7 +130,7 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
 	  line = stringx.replace(line, tokens.START, '') --start-of-word token is reserved
 	  line = stringx.replace(line, tokens.END, '') --end-of-word token is reserved
           for word in line:gmatch'([^%s]+)' do
-	     max_word_l_tmp = math.max(max_word_l_tmp, utf8.len(word))
+	     max_word_l_tmp = math.max(max_word_l_tmp, utf8.len(word) + 2) -- add 2 for start/end chars
 	     counts = counts + 1
           end
 	  if tokens.EOS ~= '' then
@@ -190,6 +190,9 @@ function BatchLoaderUnk.text_to_tensor(input_files, out_vocabfile, out_tensorfil
                 chars[#chars + 1] = char2idx[tokens.END] -- end-of-word symbol
                 for i = 1, math.min(#chars, max_word_l) do
                    output_chars[split][word_num][i] = chars[i]
+                end
+                if #chars == max_word_l then
+                    chars[#chars] = char2idx[tokens.END]
                 end
              end
              append(rword)

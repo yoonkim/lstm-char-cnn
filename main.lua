@@ -48,16 +48,15 @@ cmd:option('-seq_length',35,'number of timesteps to unroll for')
 cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',25,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
-cmd:option('-max_word_l',50,'maximum word length')
+cmd:option('-max_word_l',65,'maximum word length')
 cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
-cmd:option('-print_every',100,'how many steps/minibatches between printing out the loss')
+cmd:option('-print_every',500,'how many steps/minibatches between printing out the loss')
 cmd:option('-save_every', 5, 'save every n epochs')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
-cmd:option('-checkpoint', 'checkpoint.t7', 'start from a checkpoint if a valid checkpoint.t7 file is given')
-cmd:option('-EOS', '', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
+cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
 -- GPU/CPU
 cmd:option('-gpuid', -1,'which gpu to use. -1 = use CPU')
 cmd:option('-cudnn', 0,'use cudnn (1=yes). this should greatly speed up convolutions')
@@ -153,28 +152,18 @@ HighwayMLP = require 'model.HighwayMLP'
 -- make sure output directory exists
 if not path.exists(opt.checkpoint_dir) then lfs.mkdir(opt.checkpoint_dir) end
 
-if path.exists(opt.checkpoint) then -- start re-training from a checkpoint
-   print('loading ' .. opt.checkpoint .. ' for retraining')
-   checkpoint = torch.load(opt.checkpoint)
-   opt = checkpoint.opt
-   retrain = true
-end
-
 -- define the model: prototypes for one timestep, then clone them in time
 protos = {}
 print('creating an LSTM-CNN with ' .. opt.num_layers .. ' layers')
-if retrain then
-    protos = checkpoint.protos
+protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
+    opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
+    opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, 
+    opt.batch_norm,opt.highway_layers, opt.hsm)
+-- training criterion (negative log likelihood)
+if opt.hsm > 0 then
+    protos.criterion = nn.HLogSoftMax(mapping, opt.rnn_size)
 else
-    protos.rnn = LSTMTDNN.lstmtdnn(opt.rnn_size, opt.num_layers, opt.dropout, #loader.idx2word, 
-				opt.word_vec_size, #loader.idx2char, opt.char_vec_size, opt.feature_maps, 
-				opt.kernels, loader.max_word_l, opt.use_words, opt.use_chars, opt.batch_norm,opt.highway_layers, opt.hsm)
-    -- training criterion (negative log likelihood)
-    if opt.hsm > 0 then
-        protos.criterion = nn.HLogSoftMax(mapping, opt.rnn_size)
-    else
-        protos.criterion = nn.ClassNLLCriterion()
-    end
+    protos.criterion = nn.ClassNLLCriterion()
 end
 
 -- the initial state of the cell/hidden states
@@ -203,9 +192,8 @@ else
 end
 
 -- initialization
-if not retrain then
-   params:uniform(-opt.param_init, opt.param_init) -- small numbers uniform if starting from scratch
-end
+params:uniform(-opt.param_init, opt.param_init) -- small numbers uniform if starting from scratch
+
 
 
 -- get layers which will be referenced layer (during SGD or introspection)
