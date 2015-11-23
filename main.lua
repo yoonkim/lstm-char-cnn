@@ -49,7 +49,6 @@ cmd:option('-batch_size',20,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',25,'number of full passes through the training data')
 cmd:option('-max_grad_norm',5,'normalize gradients at')
 cmd:option('-max_word_l',65,'maximum word length')
-cmd:option('-threads', 16, 'number of threads') 
 -- bookkeeping
 cmd:option('-seed',3435,'torch manual random number generator seed')
 cmd:option('-print_every',500,'how many steps/minibatches between printing out the loss')
@@ -57,10 +56,10 @@ cmd:option('-save_every', 5, 'save every n epochs')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','char','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-EOS', '+', '<EOS> symbol. should be a single unused character (like +) for PTB and blank for others')
+cmd:option('-time', 0, 'print batch times')
 -- GPU/CPU
 cmd:option('-gpuid', -1,'which gpu to use. -1 = use CPU')
 cmd:option('-cudnn', 0,'use cudnn (1=yes). this should greatly speed up convolutions')
-cmd:option('-time', 0, 'print batch times')
 cmd:text()
 
 -- parse input params
@@ -70,10 +69,6 @@ torch.manualSeed(opt.seed)
 assert(opt.use_words == 1 or opt.use_words == 0, '-use_words has to be 0 or 1')
 assert(opt.use_chars == 1 or opt.use_chars == 0, '-use_chars has to be 0 or 1')
 assert((opt.use_chars + opt.use_words) > 0, 'has to use at least one of words or chars')
-
---if opt.threads > 0 then
---    torch.setnumthreads(opt.threads)
---end
 
 -- some housekeeping
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
@@ -192,9 +187,7 @@ else
 end
 
 -- initialization
-params:uniform(-opt.param_init, opt.param_init) -- small numbers uniform if starting from scratch
-
-
+params:uniform(-opt.param_init, opt.param_init) -- small numbers uniform
 
 -- get layers which will be referenced layer (during SGD or introspection)
 function get_layer(layer)
