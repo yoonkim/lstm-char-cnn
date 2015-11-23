@@ -1,11 +1,7 @@
 local LSTMTDNN = {}
 
 local ok, cunn = pcall(require, 'fbcunn')
-if not ok then
-    LookupTable = nn.LookupTable
-else
-    LookupTable = nn.LookupTableGPU
-end
+LookupTable = nn.LookupTable
 
 function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size, char_vocab_size, char_vec_size,
 	 			     feature_maps, kernels, length, use_words, use_chars, batch_norm, highway_layers, hsm)
