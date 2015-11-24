@@ -74,8 +74,6 @@ assert((opt.use_chars + opt.use_words) > 0, 'has to use at least one of words or
 loadstring('opt.kernels = ' .. opt.kernels)() -- get kernel sizes
 loadstring('opt.feature_maps = ' .. opt.feature_maps)() -- get feature map sizes
 
-opt.padding = 0 
-
 -- global constants for certain tokens
 opt.tokens = {}
 opt.tokens.EOS = opt.EOS
@@ -99,7 +97,7 @@ if opt.cudnn == 1 then
 end
 
 -- create the data loader class
-loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.padding, opt.max_word_l)
+loader = BatchLoader.create(opt.data_dir, opt.batch_size, opt.seq_length, opt.max_word_l)
 print('Word vocab size: ' .. #loader.idx2word .. ', Char vocab size: ' .. #loader.idx2char
 	    .. ', Max word length (incl. padding): ', loader.max_word_l)
 opt.max_word_l = loader.max_word_l

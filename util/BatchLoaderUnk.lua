@@ -7,11 +7,10 @@ local stringx = require('pl.stringx')
 BatchLoaderUnk.__index = BatchLoaderUnk
 utf8 = require 'lua-utf8'
 
-function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_word_l)
+function BatchLoaderUnk.create(data_dir, batch_size, seq_length, max_word_l)
     local self = {}
     setmetatable(self, BatchLoaderUnk)
 
-    self.padding = padding or 0
     local train_file = path.join(data_dir, 'train.txt')
     local valid_file = path.join(data_dir, 'valid.txt')
     local test_file = path.join(data_dir, 'test.txt')
@@ -53,7 +52,7 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
        ydata[-1] = data[1]
        local data_char = torch.zeros(data:size(1), self.max_word_l):long()
        for i = 1, data:size(1) do
-          data_char[i] = self:expand(all_data_char[split][i]:totable())
+          data_char[i] = all_data_char[split][i]
        end
        if split < 3 then
           x_batches = data:view(batch_size, -1):split(seq_length, 2)
@@ -73,19 +72,10 @@ function BatchLoaderUnk.create(data_dir, batch_size, seq_length, padding, max_wo
        self.all_batches[split] = {x_batches, y_batches, x_char_batches}
     end
     self.batch_idx = {0,0,0}
-    print(string.format('data load done. Number of batches in train: %d, val: %d, test: %d', self.split_sizes[1], self.split_sizes[2], self.split_sizes[3]))
+    print(string.format('data load done. Number of batches in train: %d, val: %d, test: %d', 
+          self.split_sizes[1], self.split_sizes[2], self.split_sizes[3]))
     collectgarbage()
     return self
-end
-
-function BatchLoaderUnk:expand(t)    
-    for i = 1, self.padding do
-        table.insert(t, 1, 1) -- 1 is always char idx for zero pad
-    end
-    while #t < self.max_word_l do
-        table.insert(t, 1)
-    end
-    return torch.LongTensor(t):sub(1, self.max_word_l)
 end
 
 function BatchLoaderUnk:reset_batch_pointer(split_idx, batch_idx)
