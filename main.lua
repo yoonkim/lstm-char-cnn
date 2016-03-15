@@ -11,7 +11,6 @@ require 'torch'
 require 'nn'
 require 'nngraph'
 require 'lfs'
-require 'util.Squeeze'
 require 'util.misc'
 
 BatchLoader = require 'util.BatchLoaderUnk'

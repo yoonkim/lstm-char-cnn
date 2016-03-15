@@ -11,7 +11,6 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 require 'lfs'
-require 'util.Squeeze'
 require 'util.misc'
 require 'util.HLogSoftMax'
 
