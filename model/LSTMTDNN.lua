@@ -80,7 +80,7 @@ function LSTMTDNN.lstmtdnn(rnn_size, n, dropout, word_vocab_size, word_vec_size,
 	end
 	-- evaluate the input sums at once for efficiency
 	local i2h = nn.Linear(input_size_L, 4 * rnn_size)(x)
-	local h2h = nn.Linear(rnn_size, 4 * rnn_size)(prev_h)
+	local h2h = nn.Linear(rnn_size, 4 * rnn_size, false)(prev_h)
 	local all_input_sums = nn.CAddTable()({i2h, h2h})
 	
 	local sigmoid_chunk = nn.Narrow(2, 1, 3*rnn_size)(all_input_sums)
